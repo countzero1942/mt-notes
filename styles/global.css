@@ -1,0 +1,115 @@
+/* This is for sticky table header which has a z-index of 3
+ * It hides the vertical scroll-bar, which is not a good design!
+ * The perfect solution might be to lower the scroll-bar
+ * beneath the sticky header. But this will do.
+ */
+
+.mantine-ScrollArea-thumb {
+  z-index: 6;
+}
+.mantine-ScrollArea-scrollbar {
+  z-index: 5;
+}
+
+:root {
+  --iu-hx-line-height: 1;
+  --iu-hx-margin-height: 0.75;
+  --iu-h1-font-size: 2rem;
+  --iu-h2-font-size: calc(var(--iu-h1-font-size) * 0.9);
+  --iu-h3-font-size: calc(var(--iu-h1-font-size) * 0.8);
+  --iu-h4-font-size: calc(var(--iu-h1-font-size) * 0.725);
+  --iu-h5-font-size: calc(var(--iu-h1-font-size) * 0.65);
+  --iu-h6-font-size: calc(var(--iu-h1-font-size) * 0.6);
+  --iu-h1-color: var(--mantine-color-grape-4);
+  --iu-h2-color: var(--mantine-color-pink-5);
+  --iu-h3-color: var(--mantine-color-grape-4);
+  --iu-h4-color: var(--mantine-color-pink-5);
+  --iu-h5-color: var(--mantine-color-grape-4);
+  --iu-h6-color: var(--mantine-color-pink-5);
+
+  @mixin dark-root {
+    --mantine-color-body: rgb(9, 9, 30);
+  }
+}
+
+@define-mixin hx-color $color {
+  color: $color;
+  text-shadow: 4px 4px 4px color-mix(in srgb, black 50%, $color);
+}
+
+@define-mixin hx-size $size, $w {
+  font-size: $size;
+  margin: calc($size * var(--iu-hx-margin-height)) 0;
+}
+
+@define-mixin hx $name, $weight {
+  $(name) {
+    @mixin hx-color var(--iu-$(name)-color) {
+    }
+    @mixin hx-size var(--iu-$(name)-font-size) {
+    }
+    font-weight: $weight;
+  }
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--iu-font-family-poppins);
+  line-height: var(--iu-hx-line-height);
+}
+
+@mixin hx h1, 900 {
+}
+@mixin hx h2, 900 {
+}
+@mixin hx h3, 800 {
+}
+@mixin hx h4, 800 {
+}
+@mixin hx h5, 800 {
+}
+@mixin hx h6, 800 {
+}
+
+@define-mixin p-shadow-light $color {
+  color: $color;
+  text-shadow: 2px 2px 3px color-mix(in srgb, black 30%, $color);
+}
+
+@define-mixin p-shadow-dark $color {
+  color: $color;
+  text-shadow: 2px 2px 2px color-mix(in srgb, black 100%, $color);
+}
+
+p {
+  @mixin p-shadow-light var(--mantine-color-blue-4);
+}
+
+[data-mantine-color-scheme='dark'] .mantine-Table-tr {
+  --table-striped-color: alpha(var(--mantine-color-blue-8), 0.3);
+  @mixin p-shadow-light var(--mantine-color-blue-4);
+}
+
+[data-mantine-color-scheme='dark'] .mantine-Table-tr:where([data-striped='odd']:nth-of-type(odd)) {
+  background-color: var(--table-striped-color);
+  @mixin p-shadow-dark var(--mantine-color-blue-2);
+}
+
+[data-mantine-color-scheme='dark']
+  .mantine-Table-tr:where([data-striped='even']:nth-of-type(even)) {
+  background-color: var(--table-striped-color);
+  @mixin p-shadow-dark var(--mantine-color-blue-2);
+}
+
+[data-mantine-color-scheme='dark'] .mantine-Table-thead .mantine-Table-tr {
+  /* @mixin dark {
+		background-color: var(--mantine-color-blue-8);
+		@mixin p-shadow-dark white;
+	} */
+  background-color: var(--mantine-color-blue-8);
+  @mixin p-shadow-dark white;
+}

@@ -24,9 +24,14 @@
     "@mantine/hooks": "8.3.8",
     "@next/bundle-analyzer": "^16.0.0",
     "@tabler/icons-react": "^3.35.0",
+    "clsx": "^2.1.1",
+    "crypto-random-string": "^5.0.0",
+    "memoizee": "^0.4.17",
+    "moderndash": "^4.0.0",
     "next": "16.0.3",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "react-icons": "^5.5.0"
   },
   "devDependencies": {
     "@babel/core": "^7.28.4",
@@ -42,6 +47,7 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/eslint-plugin-jsx-a11y": "^6",
     "@types/jest": "^30.0.0",
+    "@types/memoizee": "^0",
     "@types/node": "^24.7.1",
     "@types/react": "19.2.5",
     "babel-loader": "^10.0.0",
