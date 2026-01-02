@@ -1,7 +1,5 @@
 "use client";
 
-import NavLinks from "@/app/nav-links";
-import { NumSeq } from "@/utils/seq";
 import {
 	AppShell,
 	Burger,
@@ -11,16 +9,13 @@ import {
 	Title,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import React from "react";
+import type React from "react";
+import NavLinks from "@/app/nav-links";
+import { NumSeq } from "@/utils/seq";
 
-export default function TheApp({
-	children,
-}: {
-	children: React.ReactNode;
-}) {
+export default function TheApp({ children }: { children: React.ReactNode }) {
 	const [mobileOpened, { toggle: toggleMobile }] = useDisclosure();
-	const [desktopOpened, { toggle: toggleDesktop }] =
-		useDisclosure(true);
+	const [desktopOpened, { toggle: toggleDesktop }] = useDisclosure(true);
 
 	return (
 		// AppShell component provides a consistent layout for your app shell
@@ -57,7 +52,7 @@ export default function TheApp({
 						/>
 					</Group>
 					<Group h="100%" px={10} my={0}>
-						<h2 style={{ margin: 0 }}>Database Stuff</h2>
+						<h2 style={{ margin: 0 }}>Notes Related Stuff</h2>
 					</Group>
 				</Group>
 			</AppShell.Header>

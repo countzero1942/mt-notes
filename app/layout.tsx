@@ -1,12 +1,16 @@
 import "@mantine/core/styles.css";
 import "@/styles/global.css";
 
-import React from 'react';
-import { ColorSchemeScript, mantineHtmlProps, MantineProvider } from '@mantine/core';
-import { theme } from '../theme';
-import TheApp from "./the-app";
-import { Inter, Poppins, Lato } from "next/font/google";
+import {
+	ColorSchemeScript,
+	MantineProvider,
+	mantineHtmlProps,
+} from "@mantine/core";
 import clsx from "clsx";
+import { Inter, Lato, Poppins } from "next/font/google";
+import React from "react";
+import { theme } from "../theme";
+import TheApp from "./the-app";
 
 const interFont = Inter({
 	subsets: ["latin"],
@@ -26,29 +30,31 @@ const latoFont = Lato({
 	variable: "--iu-font-family-lato",
 });
 
-
 export const metadata = {
-  title: 'Notes Related Stuff',
-  description: 'Notes related stuff using Mantine with Next.js!',
+	title: "Notes Related Stuff",
+	description: "Notes related stuff using Mantine with Next.js!",
 };
-  
+
 export default function RootLayout({ children }: { children: any }) {
-  return (
-    <html lang="en" {...mantineHtmlProps}
-    className={clsx(poppinsFont.className, latoFont.className)}>
-      <head>
-        <ColorSchemeScript />
-        <link rel="shortcut icon" href="/favicon.svg" />
-        <meta
-          name="viewport"
-          content="minimum-scale=1, initial-scale=1, width=device-width, user-scalable=no"
-        />
-      </head>
-      <body>
-        <MantineProvider theme={theme}>
-          <TheApp>{children}</TheApp>
-        </MantineProvider>
-      </body>
-    </html>
-  );
+	return (
+		<html
+			lang="en"
+			{...mantineHtmlProps}
+			className={clsx(poppinsFont.className, latoFont.className)}
+		>
+			<head>
+				<ColorSchemeScript />
+				<link rel="shortcut icon" href="/favicon.svg" />
+				<meta
+					name="viewport"
+					content="minimum-scale=1, initial-scale=1, width=device-width, user-scalable=no"
+				/>
+			</head>
+			<body>
+				<MantineProvider theme={theme}>
+					<TheApp>{children}</TheApp>
+				</MantineProvider>
+			</body>
+		</html>
+	);
 }

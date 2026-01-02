@@ -1,22 +1,18 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-import Link from "next/link";
-
-import { useEffect, useState } from "react";
 import { Divider, NavLink } from "@mantine/core";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { FaChevronRight } from "react-icons/fa";
-import {
-	getCurrentNavLinks,
-	NavLinksInfo,
-} from "@/client-data/nav-links";
+import { getCurrentNavLinks, type NavLinksInfo } from "@/client-data/nav-links";
 
 export default function NavLinks() {
 	const pathName = usePathname();
 
-	const [navLinksInfo, setNavLinksInfo] = useState<
-		NavLinksInfo | undefined
-	>(undefined);
+	const [navLinksInfo, setNavLinksInfo] = useState<NavLinksInfo | undefined>(
+		undefined,
+	);
 
 	useEffect(() => {
 		const newNavLinksInfo = getCurrentNavLinks(pathName);
@@ -27,12 +23,7 @@ export default function NavLinks() {
 		if (navLinksInfo !== undefined && navLinksInfo.dir !== "/") {
 			return (
 				<>
-					<NavLink
-						key="Home"
-						label="Home"
-						component={Link}
-						href="/"
-					/>
+					<NavLink key="Home" label="Home" component={Link} href="/" />
 					<Divider my="0.5rem" />
 				</>
 			);
@@ -42,12 +33,7 @@ export default function NavLinks() {
 
 	const getChildrenIcon = (children?: boolean) => {
 		if (children === true) {
-			return (
-				<FaChevronRight
-					size="0.5rem"
-					style={{ marginTop: "0.25rem" }}
-				/>
-			);
+			return <FaChevronRight size="0.5rem" style={{ marginTop: "0.25rem" }} />;
 		}
 		return null;
 	};

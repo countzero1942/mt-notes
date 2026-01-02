@@ -1,0 +1,186 @@
+// src/rehype-transmission.ts
+
+import type { Element, ElementContent, Root } from "hast";
+import { visit } from "unist-util-visit";
+import type { TxConfig } from "./types.js";
+
+export function rehypeTransmission(txConfig: TxConfig) {
+	return function transformer(tree: Root) {
+		// Process transmission inline nodes
+		visit(tree, (node: any) => {
+			if (node.type === "element" && node.data?.txType === "inline") {
+				transformInlineNode(node, txConfig);
+			}
+		});
+
+		// Process transmission block nodes
+		visit(tree, (node: any) => {
+			if (node.type === "element" && node.data?.txType === "block") {
+				transformBlockNode(node, txConfig);
+			}
+		});
+
+		// Add indent styles to poetic lines
+		visit(tree, "element", (node: Element) => {
+			if (node.properties?.className) {
+				const classes = Array.isArray(node.properties.className)
+					? node.properties.className
+					: [node.properties.className];
+
+				if (classes.includes("tx-line")) {
+					addIndentStyle(node, txConfig);
+				}
+			}
+		});
+	};
+}
+
+/**
+ * Transform inline transmission nodes
+ */
+function transformInlineNode(node: any, config: TxConfig) {
+	const { tag, variant } = node.data;
+	const tagConfig = config.inline[tag];
+
+	if (!tagConfig) return;
+
+	// If strategy is HTML, ensure proper attributes
+	if (tagConfig.strategy === "html") {
+		// Classes already set in remark phase via data.hProperties
+		// Just ensure consistency
+		ensureClassPrefix(node, config.classPrefix || "tx-");
+	}
+}
+
+/**
+ * Transform block transmission nodes
+ */
+function transformBlockNode(node: any, config: TxConfig) {
+	const { tag, variant, headingContent } = node.data;
+	const tagConfig = config.block[tag];
+
+	if (!tagConfig) return;
+
+	// Handle heading target placement
+	if (headingContent && tagConfig.headingTarget) {
+		switch (tagConfig.headingTarget) {
+			case "summary":
+				insertSummaryElement(node, headingContent);
+				break;
+			case "figcaption":
+				insertFigcaptionElement(node, headingContent);
+				break;
+			case "title":
+				insertTitleElement(node, headingContent, config);
+				break;
+		}
+	}
+
+	// Ensure class prefix
+	ensureClassPrefix(node, config.classPrefix || "tx-");
+}
+
+/**
+ * Insert <summary> element for <details>
+ */
+function insertSummaryElement(node: Element, headingContent: ElementContent[]) {
+	const summary: Element = {
+		type: "element",
+		tagName: "summary",
+		properties: {},
+		children: headingContent,
+	};
+
+	// Insert at beginning
+	node.children.unshift(summary);
+}
+
+/**
+ * Insert <figcaption> element for <figure>
+ */
+function insertFigcaptionElement(
+	node: Element,
+	headingContent: ElementContent[],
+) {
+	const figcaption: Element = {
+		type: "element",
+		tagName: "figcaption",
+		properties: {},
+		children: headingContent,
+	};
+
+	// Insert at beginning (or end, depending on preference)
+	node.children.unshift(figcaption);
+}
+
+/**
+ * Insert title/heading element
+ */
+function insertTitleElement(
+	node: Element,
+	headingContent: ElementContent[],
+	config: TxConfig,
+) {
+	const title: Element = {
+		type: "element",
+		tagName: "div",
+		properties: {
+			className: [`${config.classPrefix || "tx-"}block-title`],
+		},
+		children: headingContent,
+	};
+
+	node.children.unshift(title);
+}
+
+/**
+ * Add indent style to poetic line elements
+ */
+function addIndentStyle(node: Element, config: TxConfig) {
+	const classes = Array.isArray(node.properties.className)
+		? node.properties.className
+		: [node.properties.className];
+
+	// Find indent level from class
+	const indentClass = classes.find(
+		(c) => typeof c === "string" && c.startsWith("tx-indent-"),
+	);
+
+	if (indentClass && typeof indentClass === "string") {
+		const level = parseInt(indentClass.replace("tx-indent-", ""), 10);
+
+		if (!Number.isNaN(level) && level > 0) {
+			// Add CSS custom property
+			node.properties.style = `--tx-indent: ${level}`;
+		}
+	}
+}
+
+/**
+ * Ensure all classes have the correct prefix
+ */
+function ensureClassPrefix(node: Element, prefix: string) {
+	if (!node.properties?.className) return;
+
+	const rawClassName = node.properties.className;
+	const classes: (string | number)[] = Array.isArray(rawClassName)
+		? rawClassName.filter(
+				(c): c is string | number =>
+					typeof c === "string" || typeof c === "number",
+			)
+		: typeof rawClassName === "string" || typeof rawClassName === "number"
+			? [rawClassName]
+			: [];
+
+	node.properties.className = classes.map((c) => {
+		if (typeof c !== "string") return c;
+
+		// Skip if already has prefix or is a standard class
+		if (c.startsWith(prefix) || c.startsWith("hljs-")) {
+			return c;
+		}
+
+		// Add prefix
+		return `${prefix}${c}`;
+	});
+}

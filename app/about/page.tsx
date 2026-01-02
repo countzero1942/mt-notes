@@ -3,7 +3,7 @@ export default async function AboutPage() {
 		<article>
 			<h1>About</h1>
 
-			<p>About Database Stuff</p>
+			<p>About Notes Related Stuff</p>
 		</article>
 	);
 }

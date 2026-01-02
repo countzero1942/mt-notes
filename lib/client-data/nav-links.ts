@@ -1,4 +1,4 @@
-import path from "path";
+import path from "node:path";
 
 export type NavLink = {
 	label: string;
@@ -30,9 +30,7 @@ const navLinksDict: Record<string, NavLink[]> = {
 	],
 };
 
-export const getCurrentNavLinks = (
-	pathName: string
-): NavLinksInfo => {
+export const getCurrentNavLinks = (pathName: string): NavLinksInfo => {
 	console.log("getCurrentNavLinks called with pathName: ", pathName);
 	// lands on home page of folder
 	const homePageLinks = navLinksDict[pathName];
