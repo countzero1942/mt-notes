@@ -25,6 +25,7 @@
 			"@/client-data/*": ["lib/client-data/*"],
 			"@/ui/*": ["lib/ui/*"],
 			"@/styles/*": ["styles/*"],
+			"@/tx": ["lib/transmission/index.ts"],
 			"@/tx/*": ["lib/transmission/*"]
 		},
 		"plugins": [

@@ -2,7 +2,7 @@
 
 import type { PhrasingContent } from "mdast";
 import { fromMarkdown } from "mdast-util-from-markdown";
-import type { ParseResult, TransmissionInline, TxConfig } from "../types.js";
+import type { ParseResult, TransmissionInline, TxConfig } from "../types";
 
 /**
  * Parse inline transmission syntax recursively

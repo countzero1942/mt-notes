@@ -3418,12 +3418,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@next/bundle-analyzer@npm:^16.0.0":
-  version: 16.0.3
-  resolution: "@next/bundle-analyzer@npm:16.0.3"
+"@next/bundle-analyzer@npm:^16.1.1":
+  version: 16.1.1
+  resolution: "@next/bundle-analyzer@npm:16.1.1"
   dependencies:
     webpack-bundle-analyzer: "npm:4.10.1"
-  checksum: 10c0/c0e3b19be63b7bcac08bf6a0b48ed22688ebc55b07908400b969c1316f1dd611ab2c88ce40be38242120812c5abd805478c7e5666734a9be710ae36849ae9354
+  checksum: 10c0/40aae0b073db2edb5d1215752fe7c1d7b98ba72ab544eadafcab0fca6efa0da944763736c5b47180b2d77a1a761ad58d138deadacadf185ee0500316708f59c8
   languageName: node
   linkType: hard
 
@@ -11325,7 +11325,7 @@ __metadata:
     "@ianvs/prettier-plugin-sort-imports": "npm:^4.7.0"
     "@mantine/core": "npm:8.3.8"
     "@mantine/hooks": "npm:8.3.8"
-    "@next/bundle-analyzer": "npm:^16.0.0"
+    "@next/bundle-analyzer": "npm:^16.1.1"
     "@storybook/addon-themes": "npm:^10.0.0"
     "@storybook/nextjs": "npm:^10.0.0"
     "@storybook/react": "npm:^10.0.0"

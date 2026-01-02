@@ -1,6 +1,6 @@
 // src/utils/indent.ts
 
-import type { IndentedLine } from "../types.js";
+import type { IndentedLine } from "../types";
 
 /**
  * Get indentation level from a line

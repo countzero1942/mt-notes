@@ -1,6 +1,6 @@
 // src/parsers/attributes.ts
 
-import type { AttributeSchema, ParsedAttributes } from "../types.js";
+import type { AttributeSchema, ParsedAttributes } from "../types";
 
 export interface AttributeParseResult {
 	attributes: ParsedAttributes;
@@ -53,7 +53,7 @@ export function parseInlineAttributes(
 					.filter((v) => v.length > 0);
 			} else if (schema?.[name]?.type === "number") {
 				const num = Number(trimmedValue);
-				attributes[name] = isNaN(num) ? trimmedValue : num;
+				attributes[name] = Number.isNaN(num) ? trimmedValue : num;
 			} else {
 				attributes[name] = trimmedValue;
 			}
@@ -129,7 +129,7 @@ export function parseBlockAttributes(
 						.filter((v) => v.length > 0);
 				} else if (schema?.[name]?.type === "number") {
 					const num = Number(value);
-					attributes[name] = isNaN(num) ? value : num;
+					attributes[name] = Number.isNaN(num) ? value : num;
 				} else {
 					attributes[name] = value;
 				}

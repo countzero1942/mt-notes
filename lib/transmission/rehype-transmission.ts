@@ -2,7 +2,7 @@
 
 import type { Element, ElementContent, Root } from "hast";
 import { visit } from "unist-util-visit";
-import type { TxConfig } from "./types.js";
+import type { TxConfig } from "./types";
 
 export function rehypeTransmission(txConfig: TxConfig) {
 	return function transformer(tree: Root) {

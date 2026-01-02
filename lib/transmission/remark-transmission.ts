@@ -3,10 +3,10 @@
 import type { Paragraph, Root } from "mdast";
 import { SKIP, visit } from "unist-util-visit";
 import type { VFile } from "vfile";
-import { createTransmissionBlock } from "./parsers/block.js";
-import { parseInlineTransmission } from "./parsers/inline.js";
-import type { TxConfig } from "./types.js";
-import { getIndentedBlock } from "./utils/indent.js";
+import { createTransmissionBlock } from "./parsers/block";
+import { parseInlineTransmission } from "./parsers/inline";
+import type { TxConfig } from "./types";
+import { getIndentedBlock } from "./utils/indent";
 
 export function remarkTransmission(txConfig: TxConfig) {
 	return function transformer(tree: Root, file: VFile) {

@@ -5,8 +5,9 @@
  * Main entry point
  */
 
-export { defaultTxConfig, mergeTxConfig } from "./config.js";
-export { remarkTransmission } from "./remark-transmission.js";
+export { defaultTxConfig, mergeTxConfig } from "./config";
+export { rehypeTransmission } from "./rehype-transmission";
+export { remarkTransmission } from "./remark-transmission";
 export type {
 	AttributeSchema,
 	BaseTagConfig,
@@ -21,4 +22,4 @@ export type {
 	TransmissionFragment,
 	TransmissionInline,
 	TxConfig,
-} from "./types.js";
+} from "./types";

@@ -1,6 +1,6 @@
 // src/config.ts
 
-import type { TxConfig } from "./types.js";
+import type { TxConfig } from "./types";
 
 /**
  * Default Transmission configuration

@@ -3,15 +3,16 @@
 import type { BlockContent, List, ListItem, PhrasingContent } from "mdast";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import type {
+	BlockTagConfig,
 	IndentedLine,
 	ParsedAttributes,
 	TransmissionBlock,
 	TransmissionFragment,
 	TxConfig,
-} from "../types.js";
-import { linesToText } from "../utils/indent.js";
-import { parseBlockAttributes, parseInlineAttributes } from "./attributes.js";
-import { parseInlineTransmission } from "./inline.js";
+} from "../types";
+import { linesToText } from "../utils/indent";
+import { parseBlockAttributes, parseInlineAttributes } from "./attributes";
+import { parseInlineTransmission } from "./inline";
 
 /**
  * Create a transmission block node from parsed components
@@ -23,7 +24,7 @@ export function createTransmissionBlock(
 	bodyLines: IndentedLine[],
 	config: TxConfig,
 ): BlockContent | TransmissionFragment {
-	const tagConfig = config.block[tag];
+	const tagConfig: BlockTagConfig = config.block[tag];
 
 	if (!tagConfig) {
 		// Unknown tag - create generic block
