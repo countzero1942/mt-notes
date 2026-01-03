@@ -1,6 +1,6 @@
 // src/remark-transmission.ts
 
-import type { Paragraph, Root } from "mdast";
+import type { Node, Paragraph, Root, RootContent } from "mdast";
 import { SKIP, visit } from "unist-util-visit";
 import type { VFile } from "vfile";
 import { createTransmissionBlock } from "./parsers/block";
@@ -185,7 +185,7 @@ function unwrapFragments(tree: Root) {
  * Calculate how many MDAST nodes were consumed by an indented block
  */
 function calculateNodesToReplace(
-	children: any[],
+	children: RootContent[],
 	startIndex: number,
 	dotTagEndLine: number,
 	blockEndLine: number,

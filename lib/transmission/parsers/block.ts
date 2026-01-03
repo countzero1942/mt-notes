@@ -191,7 +191,7 @@ function createHtmlBlock(
 	headingNodes: PhrasingContent[],
 	bodyNodes: BlockContent[],
 	attributes: ParsedAttributes,
-	tagConfig: any,
+	tagConfig: BlockTagConfig,
 	config: TxConfig,
 ): TransmissionBlock {
 	const className =

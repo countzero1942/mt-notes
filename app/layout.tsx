@@ -8,7 +8,7 @@ import {
 } from "@mantine/core";
 import clsx from "clsx";
 import { Inter, Lato, Poppins } from "next/font/google";
-import React from "react";
+import type React from "react";
 import { theme } from "../theme";
 import TheApp from "./the-app";
 
@@ -35,7 +35,11 @@ export const metadata = {
 	description: "Notes related stuff using Mantine with Next.js!",
 };
 
-export default function RootLayout({ children }: { children: any }) {
+export default function RootLayout({
+	children,
+}: {
+	children: React.ReactNode;
+}) {
 	return (
 		<html
 			lang="en"

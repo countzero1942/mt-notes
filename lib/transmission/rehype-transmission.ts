@@ -1,22 +1,37 @@
 // src/rehype-transmission.ts
 
 import type { Element, ElementContent, Root } from "hast";
+import type { Node } from "unist";
 import { visit } from "unist-util-visit";
 import type { TxConfig } from "./types";
+
+// Custom data type for transmission elements
+interface TxElementData {
+	txType?: "inline" | "block";
+	tag?: string;
+	variant?: string;
+	headingContent?: ElementContent[];
+}
 
 export function rehypeTransmission(txConfig: TxConfig) {
 	return function transformer(tree: Root) {
 		// Process transmission inline nodes
-		visit(tree, (node: any) => {
-			if (node.type === "element" && node.data?.txType === "inline") {
-				transformInlineNode(node, txConfig);
+		visit(tree, (node: Node) => {
+			if (node.type === "element") {
+				const data = (node as Element).data as TxElementData | undefined;
+				if (data?.txType === "inline") {
+					transformInlineNode(node as Element, txConfig);
+				}
 			}
 		});
 
 		// Process transmission block nodes
-		visit(tree, (node: any) => {
-			if (node.type === "element" && node.data?.txType === "block") {
-				transformBlockNode(node, txConfig);
+		visit(tree, (node: Node) => {
+			if (node.type === "element") {
+				const data = (node as Element).data as TxElementData | undefined;
+				if (data?.txType === "block") {
+					transformBlockNode(node as Element, txConfig);
+				}
 			}
 		});
 
@@ -38,8 +53,10 @@ export function rehypeTransmission(txConfig: TxConfig) {
 /**
  * Transform inline transmission nodes
  */
-function transformInlineNode(node: any, config: TxConfig) {
-	const { tag, variant } = node.data;
+function transformInlineNode(node: Element, config: TxConfig) {
+	const data = node.data as TxElementData;
+	const { tag, variant } = data;
+	if (!tag) return;
 	const tagConfig = config.inline[tag];
 
 	if (!tagConfig) return;
@@ -55,8 +72,10 @@ function transformInlineNode(node: any, config: TxConfig) {
 /**
  * Transform block transmission nodes
  */
-function transformBlockNode(node: any, config: TxConfig) {
-	const { tag, variant, headingContent } = node.data;
+function transformBlockNode(node: Element, config: TxConfig) {
+	const data = node.data as TxElementData;
+	const { tag, variant, headingContent } = data;
+	if (!tag) return;
 	const tagConfig = config.block[tag];
 
 	if (!tagConfig) return;
