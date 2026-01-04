@@ -33,10 +33,16 @@ export const defaultTxConfig: TxConfig = {
 		},
 
 		u: { strategy: "html", htmlTag: "u" },
-		mark: { strategy: "html", htmlTag: "mark" },
-		kbd: { strategy: "html", htmlTag: "kbd" },
 		sup: { strategy: "html", htmlTag: "sup" },
+		kbd: { strategy: "html", htmlTag: "kbd" },
 		sub: { strategy: "html", htmlTag: "sub" },
+		q: { strategy: "html", htmlTag: "q" },
+		cite: { strategy: "html", htmlTag: "cite" },
+		abbr: { strategy: "html", htmlTag: "abbr" },
+		dfn: { strategy: "html", htmlTag: "dfn" },
+		data: { strategy: "html", htmlTag: "data" },
+		time: { strategy: "html", htmlTag: "time" },
+		mark: { strategy: "html", htmlTag: "mark" },
 	},
 
 	heading: {

@@ -8,6 +8,7 @@
 export { defaultTxConfig, mergeTxConfig } from "./config";
 export { rehypeTransmission } from "./rehype-transmission";
 export { remarkTransmission } from "./remark-transmission";
+export { parseTxMarkdown } from "./tx-md-parser";
 export type {
 	AttributeSchema,
 	BaseTagConfig,

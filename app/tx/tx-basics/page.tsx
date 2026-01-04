@@ -15,45 +15,60 @@ export default function TxBasicsPage() {
 			<MarkdownTxSection title="Heading 7" markdown={`.h7 Heading 7`} />
 			<Divider my="md" />
 			<MarkdownTxSection
-				title="Heading 1 With Tx Bold"
-				markdown={`.h1 .b{Bold} Heading`}
+				title="Text With Tx Bold"
+				markdown={`A .b{Bold} Heading`}
 			/>
 			<MarkdownTxSection
-				title="Heading 1 With Tx Italic"
-				markdown={`.h1 .i{Italic} Heading`}
+				title="Heading 3 With Tx Bold"
+				markdown={`.h3 A .b{Bold} Heading`}
 			/>
 			<MarkdownTxSection
-				title="Heading 1 With Tx Bold and Italic"
-				markdown={`.h1 .b{Bold} .i{Italic} Heading`}
+				title="Heading 3 With Tx Italic"
+				markdown={`.h3 An .i{Italic} Heading`}
 			/>
 			<MarkdownTxSection
-				title="Heading 1 With Tx Bold and Italic Recursive"
-				markdown={`.h1 .b{Bold .i{Italic}} Heading`}
+				title="Heading 3 With Tx Bold and Italic"
+				markdown={`.h3 A .b{Bold} .i{Italic} Heading`}
+			/>
+			<MarkdownTxSection
+				title="Heading 3 With Tx Bold and Italic Recursive"
+				markdown={`.h3 .b{Bold .i{Italic}} Heading`}
 			/>
 			<Divider my="md" />
 			<MarkdownTxSection
-				title="Heading 1 With Tx-Markdown Bold and Italic"
-				markdown={`.h1 **Bold** .i{Italic} Heading`}
+				title="Heading 3 With Tx-Markdown Bold and Italic"
+				markdown={`.h3 **Bold** .i{Italic} Heading`}
 			/>
 			<MarkdownTxSection
-				title="Heading 1 With Tx-Markdown Bold and Italic"
-				markdown={`.h1 .b{Bold} *Italic* Heading`}
+				title="Heading 3 With Tx-Markdown Bold and Italic"
+				markdown={`.h3 .b{Bold} *Italic* Heading`}
 			/>
 			<MarkdownTxSection
-				title="Heading 1 With Tx-Markdown Bold and Italic Recursive"
-				markdown={`.h1 **Bold .i{Italic}** Heading`}
+				title="Heading 3 With Tx-Markdown Bold and Italic Recursive"
+				markdown={`.h3 **Bold .i{Italic}** Heading`}
 			/>
 			<MarkdownTxSection
-				title="Heading 1 With Tx-Markdown Bold and Italic Recursive"
-				markdown={`.h1 *Italic .b{Bold}*`}
+				title="Heading 3 With Tx-Markdown Italic and Bold Recursive"
+				markdown={`.h3 *Italic .b{Bold}*`}
 			/>
 			<MarkdownTxSection
-				title="Heading 1 With Tx Bold and Italic Recursive"
-				markdown={`.h1 .b{Bold *Italic*} Heading`}
+				title="Heading 3 With Tx Bold and Italic Recursive"
+				markdown={`.h3 .b{Bold *Italic*} Heading`}
 			/>
 			<MarkdownTxSection
-				title="Heading 1 With Tx Bold and Italic Recursive"
-				markdown={`.h1 .i{Italic **Bold**} Heading`}
+				title="Heading 3 With Tx Bold and Italic Recursive"
+				markdown={`.h3 .i{Italic **Bold**} Heading`}
+			/>
+			<Divider my="md" />
+			<MarkdownTxSection title="Latex" markdown={`$r>g$`} />
+			<MarkdownTxSection title="Latex in Text" markdown={`This is $r>g$`} />
+			<MarkdownTxSection
+				title="Tx Italic and Latex"
+				markdown={`This is .i{Italic} and some math: $r>g$`}
+			/>
+			<MarkdownTxSection
+				title="Heading 1 With Tx Italic and Latex"
+				markdown={`.h3 .i{Italic} Heading $r>g$`}
 			/>
 		</article>
 	);

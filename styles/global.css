@@ -1,3 +1,7 @@
+/* @import 'katex/dist/katex.min.css'; */
+
+
+
 /* This is for sticky table header which has a z-index of 3
  * It hides the vertical scroll-bar, which is not a good design!
  * The perfect solution might be to lower the scroll-bar
@@ -77,12 +81,12 @@ h6 {
 
 @define-mixin p-shadow-light $color {
   color: $color;
-  text-shadow: 2px 2px 3px color-mix(in srgb, black 30%, $color);
+  /* text-shadow: 2px 2px 3px color-mix(in srgb, black 30%, $color); */
 }
 
 @define-mixin p-shadow-dark $color {
   color: $color;
-  text-shadow: 2px 2px 2px color-mix(in srgb, black 100%, $color);
+  /* text-shadow: 2px 2px 2px color-mix(in srgb, black 100%, $color); */
 }
 
 p {

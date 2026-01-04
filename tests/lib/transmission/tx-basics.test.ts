@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { parseTxMarkdown } from "@/local-utils/tx-md-parser";
+import { parseTxMarkdown } from "@/lib/transmission/tx-md-parser";
 
 describe("tx-basics", () => {
 	describe("Basic Headings", () => {
@@ -62,7 +62,9 @@ describe("tx-basics", () => {
 		test("Heading 1 With Tx Bold and Italic", async () => {
 			const markdown = ".h1 .b{Bold} .i{Italic} Heading";
 			const html = await parseTxMarkdown(markdown);
-			expect(html).toBe("<h1><strong>Bold</strong><em>Italic</em>Heading</h1>");
+			expect(html).toBe(
+				"<h1><strong>Bold</strong> <em>Italic</em>Heading</h1>",
+			);
 		});
 
 		test("Heading 1 With Tx Bold and Italic Recursive", async () => {
@@ -107,6 +109,14 @@ describe("tx-basics", () => {
 			const markdown = ".h1 .i{Italic **Bold**} Heading";
 			const html = await parseTxMarkdown(markdown);
 			expect(html).toBe("<h1><em>Italic<strong>Bold</strong></em>Heading</h1>");
+		});
+
+		test("Heading 1 With Tx Bold, Italic, Latex", async () => {
+			const markdown = ".h3 .i{Italic} Heading $r>g$ ";
+			const html = await parseTxMarkdown(markdown);
+			expect(html).toBe(
+				'<h1><em>Italic</em>Heading <mark class="tx-highlight tx-hl-r">r>g</mark></h1>',
+			);
 		});
 	});
 });

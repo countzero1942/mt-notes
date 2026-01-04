@@ -4,7 +4,8 @@ import { Box, Button, Grid } from "@mantine/core";
 import type prettier from "prettier";
 import { useState } from "react";
 import { parseTxMarkdownService } from "@/server/markdown-parser";
-import { CodeBlock } from "./code-block";
+// import { CodeBlock } from "./code-block";
+import { CodeBlockWithCopy } from "./copy-code-block";
 
 export type MarkdownTxSectionProps = {
 	title: string;
@@ -28,10 +29,10 @@ export const MarkdownTxSection = ({
 			<h3>{title}</h3>
 			<Grid>
 				<Grid.Col span={6}>
-					<CodeBlock codeString={markdown} language="markdown" />
+					<CodeBlockWithCopy codeString={markdown} language="markdown" />
 				</Grid.Col>
 				<Grid.Col span={6}>
-					<CodeBlock codeString={html} language="markup" />
+					<CodeBlockWithCopy codeString={html} language="markup" />
 				</Grid.Col>
 				<Grid.Col span={12}>
 					<Box
