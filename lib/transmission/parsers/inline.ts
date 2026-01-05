@@ -116,12 +116,21 @@ export function extractBracedContent(
 
 /**
  * Parse markdown syntax within text
+ * PRESERVES exact whitespace by checking if text is plain (no markdown)
  */
 function parseMarkdownInline(text: string): PhrasingContent[] {
 	if (!text) return [];
 
+	// Check if text contains markdown syntax
+	const hasMarkdown = /[*_`~\[]/.test(text);
+
+	if (!hasMarkdown) {
+		// Plain text - preserve exact whitespace
+		return [{ type: "text", value: text }];
+	}
+
 	try {
-		// Parse as markdown to handle **, *, `, etc.
+		// Has markdown - parse it
 		const tree = fromMarkdown(text);
 
 		if (tree.children[0]?.type === "paragraph") {
