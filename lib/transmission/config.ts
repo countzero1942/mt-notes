@@ -9,6 +9,7 @@ import type { TxConfig } from "./types";
 export const defaultTxConfig: TxConfig = {
 	classPrefix: "tx-",
 	indentUnit: "2em",
+	scannableMdNodes: ["strong", "emphasis", "delete"],
 
 	inline: {
 		// Semantic HTML mappings (no classes needed)
@@ -132,6 +133,8 @@ export function mergeTxConfig(userConfig: Partial<TxConfig>): TxConfig {
 	return {
 		classPrefix: userConfig.classPrefix ?? defaultTxConfig.classPrefix,
 		indentUnit: userConfig.indentUnit ?? defaultTxConfig.indentUnit,
+		scannableMdNodes:
+			userConfig.scannableMdNodes ?? defaultTxConfig.scannableMdNodes,
 		inline: { ...defaultTxConfig.inline, ...userConfig.inline },
 		heading: { ...defaultTxConfig.heading, ...userConfig.heading },
 		block: { ...defaultTxConfig.block, ...userConfig.block },

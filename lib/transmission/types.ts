@@ -11,6 +11,10 @@ export interface TxConfig {
 	// Global settings
 	indentUnit?: string; // Default: '2em'
 	classPrefix?: string; // Default: 'tx-'
+
+	// Markdown node types to scan for dot-tags
+	// e.g., ['strong', 'emphasis', 'delete']
+	scannableMdNodes?: string[];
 }
 
 export type OutputStrategy = "markdown" | "html" | "component";

@@ -6,6 +6,11 @@ export default function TxBasicsPage() {
 		<article>
 			<h1>Tx Basics</h1>
 			<p>In this page I will explore tx basics.</p>
+
+			<Divider my="md" />
+
+			<h2>Test Tx Headings</h2>
+
 			<MarkdownTxSection title="Heading 1" markdown={`.h1 Heading 1`} />
 			<MarkdownTxSection title="Heading 2" markdown={`.h2 Heading 2`} />
 			<MarkdownTxSection title="Heading 3" markdown={`.h3 Heading 3`} />
@@ -14,7 +19,11 @@ export default function TxBasicsPage() {
 			<MarkdownTxSection title="Heading 6" markdown={`.h6 Heading 6`} />
 			<MarkdownTxSection title="Heading 7" markdown={`.h7 Heading 7`} />
 			<MarkdownTxSection title="Heading 0" markdown={`.h0 Heading 0`} />
+
 			<Divider my="md" />
+
+			<h2>Test Tx Text</h2>
+
 			<MarkdownTxSection
 				title="Text With Tx Bold"
 				markdown={`A .b{Bold} Text`}
@@ -30,11 +39,38 @@ export default function TxBasicsPage() {
 				markdown={`Very .b{Bold}!`}
 			/>
 			<MarkdownTxSection
+				title="Text With Tx Bold and Italic"
+				markdown={`Very .b{Bold} and .i{Italic}!`}
+			/>
+			<MarkdownTxSection
 				title="Text With Tx Bold and Italic Word"
 				markdown={`A .b{Bold}.i{Italic}Word text`}
 			/>
+			<MarkdownTxSection
+				title="Text With Tx Bold and Italic Recursive"
+				markdown={`.b{Bold .i{Italic}} text`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx Bold and Italic Recursive"
+				markdown={`A .b{Bold .i{Italic}} text`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx Many Nested Recursive"
+				markdown={`.b{Bold .i{Italic .u{Underline}}} text`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx Many Nested Recursive"
+				markdown={`A .b{Bold .i{Italic .u{Underline}}} text`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx Many Nested Recursive"
+				markdown={`A .q{Quoted .b{Bold .i{Italic .u{Underline}}}} text`}
+			/>
 
 			<Divider my="md" />
+
+			<h2>Test Tx Headings with Tx</h2>
+
 			<MarkdownTxSection
 				title="Heading 3 With Tx Bold"
 				markdown={`.h3 A .b{Bold} Heading`}
@@ -65,6 +101,9 @@ export default function TxBasicsPage() {
 			/>
 
 			<Divider my="md" />
+
+			<h2>Test Tx Headings with Tx-Markdown Mixed</h2>
+
 			<MarkdownTxSection
 				title="Heading 3 With Tx-Markdown Bold and Italic"
 				markdown={`.h3 **Bold** .i{Italic} Heading`}
@@ -83,11 +122,27 @@ export default function TxBasicsPage() {
 			/>
 			<MarkdownTxSection
 				title="Heading 3 With Tx-Markdown Mixed Bold, Italic Recursive"
+				markdown={`.h3 A .b{Bold *Italic*} Heading`}
+			/>
+			<MarkdownTxSection
+				title="Heading 3 With Tx Bold and Italic Recursive"
+				markdown={`.h3 An .i{Italic **Bold**} Heading`}
+			/>
+			<MarkdownTxSection
+				title="Heading 3 With Tx-Markdown Mixed Bold, Italic Recursive"
 				markdown={`.h3 **Bold .i{Italic}** Heading`}
 			/>
 			<MarkdownTxSection
 				title="Heading 3 With Tx-Markdown Mixed Italic, Bold Recursive"
 				markdown={`.h3 *Italic .b{Bold} Heading*`}
+			/>
+			<MarkdownTxSection
+				title="Heading 3 With Tx-Markdown Mixed Bold, Italic Recursive"
+				markdown={`.h3 A **Bold .i{Italic}** Heading`}
+			/>
+			<MarkdownTxSection
+				title="Heading 3 With Tx-Markdown Mixed Italic, Bold Recursive"
+				markdown={`.h3 An *Italic .b{Bold} Heading*`}
 			/>
 			<MarkdownTxSection
 				title="Heading 3 With Tx-Markdown Mixed Italic, Bold Recursive"
@@ -97,7 +152,11 @@ export default function TxBasicsPage() {
 				title="Heading 3 With Tx-Markdown Mixed Italic, Bold Recursive"
 				markdown={`.h3 *Italic .b{Bold}* Heading`}
 			/>
+
 			<Divider my="md" />
+
+			<h2>Test Tx Headings with Latex</h2>
+
 			<MarkdownTxSection title="Latex" markdown={`$r>g$`} />
 			<MarkdownTxSection title="Latex in Text" markdown={`This is $r>g$`} />
 			<MarkdownTxSection
