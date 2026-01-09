@@ -102,6 +102,75 @@ export default function TxBasicsPage() {
 
 			<Divider my="md" />
 
+			<h2>Test Text with Tx-Markdown Mixed</h2>
+
+			<MarkdownTxSection
+				title="Text With Tx-Markdown Bold and Italic"
+				markdown={`**Bold** .i{Italic} text`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx-Markdown Bold and Italic"
+				markdown={`.b{Bold} *Italic* text`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx-Markdown Mixed Bold, Italic Recursive"
+				markdown={`.b{Bold *Italic*} text`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx-Markdown Mixed Bold, Italic Recursive"
+				markdown={`A .b{Bold *Italic*} text`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx Bold and Italic Recursive"
+				markdown={`.i{Italic **Bold**} text`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx Bold and Italic Recursive"
+				markdown={`.i{**Bold**} text`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx Bold and Italic Recursive"
+				markdown={`.i{**Bold**}`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx Bold and Italic Recursive"
+				markdown={`.i{**Bold** Text}`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx Bold and Italic Recursive"
+				markdown={`An .i{Italic **Bold** kind of} text`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx-Markdown Mixed Bold, Italic Recursive"
+				markdown={`**Bold .i{Italic}** text`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx-Markdown Mixed Italic, Bold Recursive"
+				markdown={`*Italic .b{Bold} text*`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx-Markdown Mixed Bold, Italic Recursive"
+				markdown={`A **Bold .i{Italic}** text`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx-Markdown Mixed Italic, Bold Recursive"
+				markdown={`An *Italic .b{Bold} text*`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx-Markdown Mixed Italic, Bold Recursive"
+				markdown={`*Italic .b{Bold}*`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx-Markdown Mixed Italic, Bold Recursive"
+				markdown={`*Italic .q{.b{Bold .u{Underline}}}* text`}
+			/>
+			<MarkdownTxSection
+				title="Text With Tx-Markdown Mixed Italic, Bold Recursive"
+				markdown={`_Italic **Very .q{.b{Bold .u{Underline}}}**_ text`}
+			/>
+
+			<Divider my="md" />
+
 			<h2>Test Tx Headings with Tx-Markdown Mixed</h2>
 
 			<MarkdownTxSection

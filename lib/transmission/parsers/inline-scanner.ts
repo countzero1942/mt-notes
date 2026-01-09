@@ -4,6 +4,7 @@ import type { Parent, PhrasingContent, Text } from "mdast";
 import type { TransmissionInline, TxConfig } from "../types";
 import { intervalContains, nodeToInterval } from "../utils/position";
 import { splitTextAtDotTag } from "../utils/text-split";
+import { offsetToPoint } from "../utils/text-split";
 
 /**
  * Recursively scan inline tree for dot-tags
@@ -14,9 +15,6 @@ export function scanInlineTreeForDotTags(
 	source: string,
 	config: TxConfig,
 ): void {
-	console.log(
-		`[scanInlineTreeForDotTags] parent.type=${parent.type}, children.length=${parent.children?.length || 0}`,
-	);
 	// Ensure we have children to scan
 	if (!Array.isArray(parent.children) || parent.children.length === 0) {
 		return;
@@ -26,18 +24,10 @@ export function scanInlineTreeForDotTags(
 
 	// Iterate children with careful index tracking
 	let i = 0;
-	let iterations = 0; // Safety counter
-	const MAX_ITERATIONS = 20;
-
-	while (i < parent.children.length && iterations < MAX_ITERATIONS) {
-		iterations++;
+	while (i < parent.children.length) {
 		const node = parent.children[i] as PhrasingContent;
 
 		if (node.type === "text") {
-			// Debug logging
-			console.log(
-				`[Scanner] i=${i}, text="${node.value.slice(0, 30)}...", children.length=${parent.children.length}`,
-			);
 			// Process this text node for dot-tags
 			const result = processTextNodeForDotTags(node, parent, i, source, config);
 
@@ -59,12 +49,6 @@ export function scanInlineTreeForDotTags(
 
 		i++;
 	}
-
-	if (iterations >= MAX_ITERATIONS) {
-		console.error(
-			`[Scanner] Hit max iterations! Possible infinite loop. Parent type: ${parent.type}`,
-		);
-	}
 }
 
 /**
@@ -83,41 +67,28 @@ function processTextNodeForDotTags(
 	const match = textNode.value.match(dotTagRegex);
 
 	if (!match) {
-		console.log(`[Process] No match in "${textNode.value}"`);
 		return { foundDotTag: false };
 	}
 
 	const tag = match[1];
 	const variant = match[2];
 
-	console.log(`[Process] Found tag="${tag}", variant="${variant || "none"}"`);
-
 	// Check if this is a valid inline tag
 	const tagConfig = config.inline[tag];
 	if (!tagConfig) {
-		console.log(`[Process] Unknown tag "${tag}", skipping`);
 		// Unknown tag, skip it
 		return { foundDotTag: false };
 	}
 
 	if (!textNode.position) {
-		console.log(
-			`[Process] Text node has no position, using value-based search`,
-		);
 		// Text node was modified (e.g., in heading processing), no position
 		// Fall back to processing using the text value directly
 		return processTextNodeByValue(textNode, parent, index, config);
 	}
 
-	console.log(`[Process] Tag config found, has position, processing...`);
-
 	// Get character offsets for this text node
 	const textInterval = nodeToInterval(textNode.position, source);
 	const textStart = textInterval.start;
-
-	console.log(
-		`[Process] textInterval: start=${textInterval.start}, end=${textInterval.end}`,
-	);
 
 	// Find where the dot-tag starts in source
 	const tagStartInText = match.index!;
@@ -125,19 +96,12 @@ function processTextNodeForDotTags(
 	const tagPrefixLength = match[0].length; // Length of ".tag{" or ".tag.variant{"
 	const contentStart = tagStart + tagPrefixLength;
 
-	console.log(
-		`[Process] tagStart=${tagStart}, contentStart=${contentStart}, looking for closing brace...`,
-	);
-
 	// Find closing brace using recursive counting
 	const closingBracePos = findClosingBrace(source, contentStart);
 	if (closingBracePos === -1) {
-		console.log(`[Process] No closing brace found, malformed tag`);
 		// Malformed - no closing brace found
 		return { foundDotTag: false };
 	}
-
-	console.log(`[Process] Found closing brace at ${closingBracePos}`);
 
 	const contentEnd = closingBracePos;
 	const tagEnd = closingBracePos + 1; // After '}'
@@ -155,13 +119,11 @@ function processTextNodeForDotTags(
 		source,
 	);
 
-	console.log(
-		`[Split] index=${index}, split.before=${split.before ? `"${split.before.value}" pos:(${split.before.position?.start.line}:${split.before.position?.start.column}-${split.before.position?.end.line}:${split.before.position?.end.column})` : "null"}, split.content=${split.content ? `"${split.content.value}" pos:(${split.content.position?.start.line}:${split.content.position?.start.column}-${split.content.position?.end.line}:${split.content.position?.end.column})` : "null"}, split.after=${split.after ? `"${split.after.value}" pos:(${split.after.position?.start.line}:${split.after.position?.start.column}-${split.after.position?.end.line}:${split.after.position?.end.column})` : "null"}`,
-	);
-
 	// Find sibling nodes that are inside the content interval
 	const nodesToMove: PhrasingContent[] = [];
 	const indicesToRemove: number[] = [];
+	let endTextNodeIndex: number | null = null;
+	let endTextNode: Text | null = null;
 
 	for (let i = index + 1; i < parent.children.length; i++) {
 		const sibling = parent.children[i] as PhrasingContent;
@@ -170,9 +132,18 @@ function processTextNodeForDotTags(
 		const siblingInterval = nodeToInterval(sibling.position, source);
 
 		if (intervalContains(contentInterval, siblingInterval)) {
-			// This node is inside the dot-tag content
+			// This node is fully inside the dot-tag content
 			nodesToMove.push(sibling);
 			indicesToRemove.push(i);
+		} else if (
+			sibling.type === "text" &&
+			siblingInterval.start < tagEnd &&
+			siblingInterval.end > contentEnd
+		) {
+			// This text node contains the closing brace
+			endTextNodeIndex = i;
+			endTextNode = sibling;
+			break; // Stop here, this is the last node
 		} else if (siblingInterval.start >= contentEnd) {
 			// Past the content interval, stop looking
 			break;
@@ -183,6 +154,57 @@ function processTextNodeForDotTags(
 	const txChildren: PhrasingContent[] = [];
 	if (split.content) txChildren.push(split.content);
 	txChildren.push(...nodesToMove);
+
+	// If closing brace is in a different text node, split it
+	let endTextSplit: { endA: Text | null; endB: Text | null } | null = null;
+	if (endTextNode && endTextNodeIndex !== null) {
+		// Split the end text node at closing brace
+		const endNodeInterval = nodeToInterval(endTextNode.position!, source);
+		const endNodeStart = endNodeInterval.start;
+
+		// Text before closing brace (end_a): from node start to contentEnd
+		const endAText =
+			contentEnd > endNodeStart
+				? source.slice(endNodeStart, contentEnd)
+				: "";
+
+		// Text after closing brace (end_b): from tagEnd to node end
+		const endBText =
+			endNodeInterval.end > tagEnd
+				? source.slice(tagEnd, endNodeInterval.end)
+				: "";
+
+		endTextSplit = {
+			endA: endAText
+				? {
+						type: "text",
+						value: endAText,
+						position: {
+							start: endTextNode.position!.start,
+							end: offsetToPoint(contentEnd, source),
+						},
+					}
+				: null,
+			endB: endBText
+				? {
+						type: "text",
+						value: endBText,
+						position: {
+							start: offsetToPoint(tagEnd, source),
+							end: endTextNode.position!.end,
+						},
+					}
+				: null,
+		};
+
+		// Add end_a to tx children
+		if (endTextSplit.endA) {
+			txChildren.push(endTextSplit.endA);
+		}
+
+		// Mark this text node for removal (will be replaced with endB)
+		indicesToRemove.push(endTextNodeIndex);
+	}
 
 	// Create the tx-inline node
 	const txNode = createInlineNode(tag, variant, txChildren, config);
@@ -208,6 +230,11 @@ function processTextNodeForDotTags(
 		newChildren.push(split.after);
 	}
 
+	// Add endB from split end text node
+	if (endTextSplit && endTextSplit.endB) {
+		newChildren.push(endTextSplit.endB);
+	}
+
 	// Add remaining siblings AFTER the current text node that was split
 	// Skip: 1) the text node we just split (at index)
 	//       2) any nodes that were moved into txNode (in indicesToRemove)
@@ -220,10 +247,6 @@ function processTextNodeForDotTags(
 
 	// Update parent's children
 	parent.children = newChildren;
-
-	console.log(
-		`[After update] parent.children.length=${parent.children.length}, types=${parent.children.map((c: any) => c.type + (c.type === "text" ? `:"${c.value.slice(0, 10)}"` : "")).join(", ")}`,
-	);
 
 	return { foundDotTag: true, txNode };
 }
@@ -384,10 +407,6 @@ function processTextNodeByValue(
 	const contentText = textNode.value.slice(contentStartInText, closingBracePos);
 	const afterText = textNode.value.slice(closingBracePos + 1);
 
-	console.log(
-		`[ProcessByValue] before="${beforeText}", content="${contentText}", after="${afterText}"`,
-	);
-
 	// Create text nodes (without positions)
 	const beforeNode: Text | null = beforeText
 		? { type: "text", value: beforeText }
@@ -424,10 +443,6 @@ function processTextNodeByValue(
 	}
 
 	parent.children = newChildren;
-
-	console.log(
-		`[ProcessByValue] Updated, parent.children.length=${parent.children.length}`,
-	);
 
 	return { foundDotTag: true, txNode };
 }

@@ -38,40 +38,75 @@ export function splitTextAtDotTag(
 	const nodeStart = getCharOffset(textNode.position.start, source);
 	const nodeEnd = getCharOffset(textNode.position.end, source);
 
-	// Text before tag: from node start to tag start
-	const beforeText =
-		tagStart > nodeStart ? source.slice(nodeStart, tagStart) : "";
+	// Check if closing brace is within this text node
+	const closingBraceInThisNode = tagEnd <= nodeEnd;
 
-	// Text inside tag content: from content start to content end
-	const contentText =
-		tagContentEnd > tagContentStart
-			? source.slice(tagContentStart, tagContentEnd)
-			: "";
+	if (closingBraceInThisNode) {
+		// Simple case: entire dot-tag is in one text node
+		// Text before tag: from node start to tag start
+		const beforeText =
+			tagStart > nodeStart ? source.slice(nodeStart, tagStart) : "";
 
-	// Text after tag: from tag end to node end
-	const afterText = nodeEnd > tagEnd ? source.slice(tagEnd, nodeEnd) : "";
+		// Text inside tag content: from content start to content end
+		const contentText =
+			tagContentEnd > tagContentStart
+				? source.slice(tagContentStart, tagContentEnd)
+				: "";
 
-	return {
-		before: beforeText
-			? createTextNode(beforeText, textNode.position.start, tagStart, source)
-			: null,
-		content: contentText
-			? createTextNode(
-					contentText,
-					offsetToPoint(tagContentStart, source),
-					tagContentEnd,
-					source,
-				)
-			: null,
-		after: afterText
-			? createTextNode(
-					afterText,
-					offsetToPoint(tagEnd, source),
-					nodeEnd,
-					source,
-				)
-			: null,
-	};
+		// Text after tag: from tag end to node end
+		const afterText = nodeEnd > tagEnd ? source.slice(tagEnd, nodeEnd) : "";
+
+		return {
+			before: beforeText
+				? createTextNode(beforeText, textNode.position.start, tagStart, source)
+				: null,
+			content: contentText
+				? createTextNode(
+						contentText,
+						offsetToPoint(tagContentStart, source),
+						tagContentEnd,
+						source,
+					)
+				: null,
+			after: afterText
+				? createTextNode(
+						afterText,
+						offsetToPoint(tagEnd, source),
+						nodeEnd,
+						source,
+					)
+				: null,
+		};
+	} else {
+		// Multi-node case: closing brace is in a different text node
+		// Only split THIS node - don't extract content from source
+		// The sibling nodes between opening and closing will be moved by the scanner
+
+		// Text before tag: from node start to tag start
+		const beforeText =
+			tagStart > nodeStart ? source.slice(nodeStart, tagStart) : "";
+
+		// Text after opening brace (start_b): from content start to node end
+		const startBText =
+			nodeEnd > tagContentStart
+				? source.slice(tagContentStart, nodeEnd)
+				: "";
+
+		return {
+			before: beforeText
+				? createTextNode(beforeText, textNode.position.start, tagStart, source)
+				: null,
+			content: startBText
+				? createTextNode(
+						startBText,
+						offsetToPoint(tagContentStart, source),
+						nodeEnd,
+						source,
+					)
+				: null,
+			after: null, // No after - closing brace is in different node
+		};
+	}
 }
 
 /**
@@ -95,7 +130,7 @@ function getCharOffset(
 /**
  * Convert character offset to line/column position
  */
-function offsetToPoint(
+export function offsetToPoint(
 	offset: number,
 	source: string,
 ): { line: number; column: number; offset: number } {
