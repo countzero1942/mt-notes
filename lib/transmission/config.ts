@@ -47,12 +47,12 @@ export const defaultTxConfig: TxConfig = {
 	},
 
 	heading: {
-		h1: { strategy: "markdown", mdType: "heading", level: 1 },
-		h2: { strategy: "markdown", mdType: "heading", level: 2 },
-		h3: { strategy: "markdown", mdType: "heading", level: 3 },
-		h4: { strategy: "markdown", mdType: "heading", level: 4 },
-		h5: { strategy: "markdown", mdType: "heading", level: 5 },
-		h6: { strategy: "markdown", mdType: "heading", level: 6 },
+		h1: { strategy: "markdown", level: 1 },
+		h2: { strategy: "markdown", level: 2 },
+		h3: { strategy: "markdown", level: 3 },
+		h4: { strategy: "markdown", level: 4 },
+		h5: { strategy: "markdown", level: 5 },
+		h6: { strategy: "markdown", level: 6 },
 	},
 
 	block: {

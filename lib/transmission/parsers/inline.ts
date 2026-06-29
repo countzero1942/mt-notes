@@ -2,7 +2,7 @@
 
 import type { PhrasingContent } from "mdast";
 import { fromMarkdown } from "mdast-util-from-markdown";
-import type { ParseResult, TransmissionInline, TxConfig } from "../types";
+import type { TxConfig } from "../types";
 
 /**
  * Parse inline transmission syntax recursively
@@ -147,12 +147,12 @@ function parseMarkdownInline(text: string): PhrasingContent[] {
 /**
  * Create an inline transmission node
  */
-function createInlineNode(
+export function createInlineNode(
 	tag: string,
 	variant: string | undefined,
 	children: PhrasingContent[],
 	config: TxConfig,
-): TransmissionInline | PhrasingContent {
+): PhrasingContent {
 	const tagConfig = config.inline[tag];
 
 	if (!tagConfig) {

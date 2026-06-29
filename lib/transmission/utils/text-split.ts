@@ -14,6 +14,15 @@ export interface SplitResult {
 }
 
 /**
+ * Unescape Transmission dot-tag content: \\ -> \, \{ -> {, \} -> }.
+ * Tag content is sliced raw from source, so the backslash escapes that let an
+ * author put a literal brace inside a tag must be collapsed here.
+ */
+export function unescapeDotTagContent(text: string): string {
+	return text.replace(/\\([\\{}])/g, "$1");
+}
+
+/**
  * Split a text node at dot-tag boundaries
  * @param textNode - The text node to split
  * @param tagStart - Character offset where dot-tag starts (e.g., position of '.b{')
@@ -50,7 +59,7 @@ export function splitTextAtDotTag(
 		// Text inside tag content: from content start to content end
 		const contentText =
 			tagContentEnd > tagContentStart
-				? source.slice(tagContentStart, tagContentEnd)
+				? unescapeDotTagContent(source.slice(tagContentStart, tagContentEnd))
 				: "";
 
 		// Text after tag: from tag end to node end
@@ -89,7 +98,7 @@ export function splitTextAtDotTag(
 		// Text after opening brace (start_b): from content start to node end
 		const startBText =
 			nodeEnd > tagContentStart
-				? source.slice(tagContentStart, nodeEnd)
+				? unescapeDotTagContent(source.slice(tagContentStart, nodeEnd))
 				: "";
 
 		return {

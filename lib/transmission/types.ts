@@ -1,6 +1,7 @@
 // src/types.ts
 
 import type { BlockContent, PhrasingContent } from "mdast";
+import type { Properties } from "hast";
 import type { Node } from "unist";
 
 export interface TxConfig {
@@ -19,50 +20,123 @@ export interface TxConfig {
 
 export type OutputStrategy = "markdown" | "html" | "component";
 
-export interface BaseTagConfig {
-	strategy: OutputStrategy;
+// ---------------------------------------------------------------------------
+// Shared building blocks
+// ---------------------------------------------------------------------------
 
-	// For markdown strategy
-	mdType?:
-		| "strong"
-		| "emphasis"
-		| "delete"
-		| "inlineCode"
-		| "blockquote"
-		| "heading"
-		| "list";
+export type ClassName = string | ((variant?: string) => string);
+export type AriaLabel = string | ((variant?: string) => string);
 
-	// For html strategy
-	htmlTag?: string;
-	className?: string | ((variant?: string) => string);
+export type HeadingTarget =
+	| "ignore"
+	| "placeBefore"
+	| "summary"
+	| "figcaption"
+	| "title";
 
-	// For component strategy (MDX)
-	component?: string;
-
-	// ARIA attributes
-	ariaRole?: string;
-	ariaLabel?: string | ((variant?: string) => string);
-
-	// Variants
+// Presentation extras, only mixed into members that render real markup.
+interface VariantConfig {
 	variants?: Record<string, string>;
 }
 
-export interface InlineTagConfig extends BaseTagConfig {
-	// Inline-specific options
+interface AriaConfig {
+	ariaRole?: string;
+	ariaLabel?: AriaLabel;
 }
 
-export interface HeadingTagConfig extends BaseTagConfig {
-	// Heading-specific options
-	level?: 1 | 2 | 3 | 4 | 5 | 6; // For markdown heading strategy
+// ---------------------------------------------------------------------------
+// Component (island) spec — block-only
+// ---------------------------------------------------------------------------
+
+export type Framework = "react" | "vue" | "svelte" | "solid";
+
+// Island hydration directive. "none" = server-render only, no client JS.
+export type HydrateMode = "load" | "idle" | "visible" | "none";
+
+export interface ComponentSpec {
+	source: string; // import specifier, e.g. "@/components/DesmosGraph"
+	export?: string; // named export; defaults to "default"
+	framework?: Framework; // defaults to "react"
+	hydrate?: HydrateMode; // when to hydrate; defaults to "load"
+	contentProp?: string; // indented body maps to this prop, e.g. "expressions"
 }
 
-export interface BlockTagConfig extends BaseTagConfig {
-	// Where does heading content go?
-	headingTarget?: "ignore" | "placeBefore" | "summary" | "figcaption" | "title";
+// ---------------------------------------------------------------------------
+// Inline tags (no component strategy — inline islands are intentionally unsupported)
+// ---------------------------------------------------------------------------
 
-	// Attribute schema
+export interface InlineMarkdownConfig {
+	strategy: "markdown";
+	mdType: "strong" | "emphasis" | "delete" | "inlineCode";
+}
+
+export interface InlineHtmlConfig extends VariantConfig, AriaConfig {
+	strategy: "html";
+	htmlTag: string;
+	className?: ClassName;
+}
+
+export type InlineTagConfig = InlineMarkdownConfig | InlineHtmlConfig;
+
+// ---------------------------------------------------------------------------
+// Heading tags (no component strategy)
+// ---------------------------------------------------------------------------
+
+export interface HeadingMarkdownConfig {
+	strategy: "markdown";
+	level: 1 | 2 | 3 | 4 | 5 | 6;
+}
+
+export interface HeadingHtmlConfig extends VariantConfig, AriaConfig {
+	strategy: "html";
+	htmlTag: string;
+	className?: ClassName;
+}
+
+export type HeadingTagConfig = HeadingMarkdownConfig | HeadingHtmlConfig;
+
+// ---------------------------------------------------------------------------
+// Block tags (markdown | html | component)
+// ---------------------------------------------------------------------------
+
+// Nested discriminant: only the heading member carries `level`.
+export type BlockMarkdownConfig =
+	| {
+			strategy: "markdown";
+			mdType: "blockquote";
+			headingTarget?: HeadingTarget;
+	  }
+	| {
+			strategy: "markdown";
+			mdType: "list";
+			headingTarget?: HeadingTarget;
+	  }
+	| {
+			strategy: "markdown";
+			mdType: "heading";
+			level: 1 | 2 | 3 | 4 | 5 | 6;
+			headingTarget?: HeadingTarget;
+	  };
+
+export interface BlockHtmlConfig extends VariantConfig, AriaConfig {
+	strategy: "html";
+	htmlTag: string;
+	className?: ClassName;
+	headingTarget?: HeadingTarget;
 	attributes?: Record<string, AttributeSchema>;
 }
+
+export interface BlockComponentConfig extends VariantConfig {
+	strategy: "component";
+	component: ComponentSpec;
+	headingTarget?: HeadingTarget;
+	attributes?: Record<string, AttributeSchema>;
+}
+
+export type BlockTagConfig =
+	| BlockMarkdownConfig
+	| BlockHtmlConfig
+	| BlockComponentConfig;
 
 export interface AttributeSchema {
 	type: "boolean" | "string" | "number" | "array";
@@ -82,7 +156,7 @@ export interface TransmissionInline extends Node {
 	children: PhrasingContent[];
 	data?: {
 		hName?: string;
-		hProperties?: Record<string, unknown>;
+		hProperties?: Properties;
 	};
 }
 
@@ -95,7 +169,7 @@ export interface TransmissionBlock extends Node {
 	children: BlockContent[];
 	data?: {
 		hName?: string;
-		hProperties?: Record<string, unknown>;
+		hProperties?: Properties;
 	};
 }
 
@@ -142,6 +216,7 @@ declare module "mdast" {
 	}
 
 	interface RootContentMap {
+		transmissionInline: TransmissionInline;
 		transmissionBlock: TransmissionBlock;
 		transmissionFragment: TransmissionFragment;
 		poeticLine: PoeticLine;

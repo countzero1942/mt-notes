@@ -1,10 +1,19 @@
 // src/parsers/inline-scanner.ts
 
-import type { Parent, PhrasingContent, Text } from "mdast";
-import type { TransmissionInline, TxConfig } from "../types";
+import type { Parent, PhrasingContent, RootContent, Text } from "mdast";
+import type { TxConfig } from "../types";
 import { intervalContains, nodeToInterval } from "../utils/position";
-import { splitTextAtDotTag } from "../utils/text-split";
-import { offsetToPoint } from "../utils/text-split";
+import {
+	offsetToPoint,
+	splitTextAtDotTag,
+	unescapeDotTagContent,
+} from "../utils/text-split";
+import { createInlineNode } from "./inline";
+
+/** Narrow a node to one that carries a children array (a unist Parent). */
+function isParent(node: RootContent): node is RootContent & Parent {
+	return "children" in node && Array.isArray((node as { children?: unknown }).children);
+}
 
 /**
  * Recursively scan inline tree for dot-tags
@@ -25,26 +34,30 @@ export function scanInlineTreeForDotTags(
 	// Iterate children with careful index tracking
 	let i = 0;
 	while (i < parent.children.length) {
-		const node = parent.children[i] as PhrasingContent;
+		const node = parent.children[i];
 
 		if (node.type === "text") {
 			// Process this text node for dot-tags
 			const result = processTextNodeForDotTags(node, parent, i, source, config);
 
-			if (result.foundDotTag && result.txNode) {
-				// Text node was split, tx-inline created
-				// Scan down the newly created tx-inline node
-				scanInlineTreeForDotTags(result.txNode, source, config);
-
-				// Continue from current position (which might now point to different node)
+			if (result.foundDotTag) {
+				// A dot-tag was consumed and the children rebuilt. Scan into the
+				// newly created node when it has children (skip leaf nodes like
+				// inlineCode, and the empty-tag case where no node was created),
+				// then re-evaluate from the current index.
+				if (result.txNode && isParent(result.txNode)) {
+					scanInlineTreeForDotTags(result.txNode, source, config);
+				}
 				continue;
 			}
-		} else if (scannableNodes.includes(node.type)) {
-			// Scannable md-inline (strong, emphasis, delete)
-			scanInlineTreeForDotTags(node as Parent, source, config);
-		} else if (node.type.startsWith("transmission")) {
-			// All tx nodes are scannable
-			scanInlineTreeForDotTags(node as Parent, source, config);
+		} else if (
+			scannableNodes.includes(node.type) ||
+			node.type.startsWith("transmission")
+		) {
+			// Scannable md-inline (strong, emphasis, delete) or any tx node
+			if (isParent(node)) {
+				scanInlineTreeForDotTags(node, source, config);
+			}
 		}
 
 		i++;
@@ -52,8 +65,11 @@ export function scanInlineTreeForDotTags(
 }
 
 /**
- * Process a single text node for dot-tags
- * Returns info about whether a dot-tag was found and processed
+ * Process a single text node for dot-tags.
+ *
+ * Scans for the FIRST closable inline dot-tag. Unknown tags and tags with no
+ * matching closing brace are left as literal text and skipped, so a malformed
+ * outer tag (e.g. `.b{` with no close) does not hide a valid inner one.
  */
 function processTextNodeForDotTags(
 	textNode: Text,
@@ -61,52 +77,71 @@ function processTextNodeForDotTags(
 	index: number,
 	source: string,
 	config: TxConfig,
-): { foundDotTag: boolean; txNode?: TransmissionInline } {
-	// Find first dot-tag in text: .tag{ or .tag.variant{
-	const dotTagRegex = /\.(\w+)(?:\.(\w+))?\{/;
-	const match = textNode.value.match(dotTagRegex);
-
-	if (!match) {
-		return { foundDotTag: false };
-	}
-
-	const tag = match[1];
-	const variant = match[2];
-
-	// Check if this is a valid inline tag
-	const tagConfig = config.inline[tag];
-	if (!tagConfig) {
-		// Unknown tag, skip it
-		return { foundDotTag: false };
-	}
-
+): { foundDotTag: boolean; txNode?: PhrasingContent } {
 	if (!textNode.position) {
-		// Text node was modified (e.g., in heading processing), no position
-		// Fall back to processing using the text value directly
+		// Text node was modified (e.g., in heading processing), no position.
+		// Fall back to processing using the text value directly.
 		return processTextNodeByValue(textNode, parent, index, config);
 	}
 
-	// Get character offsets for this text node
 	const textInterval = nodeToInterval(textNode.position, source);
 	const textStart = textInterval.start;
 
-	// Find where the dot-tag starts in source
-	const tagStartInText = match.index!;
-	const tagStart = textStart + tagStartInText;
-	const tagPrefixLength = match[0].length; // Length of ".tag{" or ".tag.variant{"
-	const contentStart = tagStart + tagPrefixLength;
+	const dotTagRegex = /\.(\w+)(?:\.(\w+))?\{/g;
+	let match: RegExpExecArray | null = dotTagRegex.exec(textNode.value);
+	while (match !== null) {
+		const tag = match[1];
+		const variant = match[2];
 
-	// Find closing brace using recursive counting
-	const closingBracePos = findClosingBrace(source, contentStart);
-	if (closingBracePos === -1) {
-		// Malformed - no closing brace found
-		return { foundDotTag: false };
+		// Only known inline tags are candidates
+		const tagConfig = config.inline[tag];
+		if (tagConfig) {
+			const tagStart = textStart + match.index;
+			const contentStart = tagStart + match[0].length;
+			const closingBracePos = findClosingBrace(source, contentStart);
+
+			if (closingBracePos !== -1) {
+				return buildInlineFromMatch(
+					textNode,
+					parent,
+					index,
+					source,
+					config,
+					tag,
+					variant,
+					tagStart,
+					contentStart,
+					closingBracePos, // contentEnd
+					closingBracePos + 1, // tagEnd (after '}')
+				);
+			}
+			// Unclosed: leave it literal and keep scanning for a later tag.
+		}
+
+		match = dotTagRegex.exec(textNode.value);
 	}
 
-	const contentEnd = closingBracePos;
-	const tagEnd = closingBracePos + 1; // After '}'
+	return { foundDotTag: false };
+}
 
-	// Now we have the content interval: [contentStart, contentEnd)
+/**
+ * Build the tx-inline node for a matched, closable dot-tag and splice it into
+ * the parent's children.
+ */
+function buildInlineFromMatch(
+	textNode: Text,
+	parent: Parent,
+	index: number,
+	source: string,
+	config: TxConfig,
+	tag: string,
+	variant: string | undefined,
+	tagStart: number,
+	contentStart: number,
+	contentEnd: number,
+	tagEnd: number,
+): { foundDotTag: boolean; txNode?: PhrasingContent } {
+	// The content interval: [contentStart, contentEnd)
 	const contentInterval = { start: contentStart, end: contentEnd };
 
 	// Split the text node at dot-tag boundaries
@@ -120,13 +155,13 @@ function processTextNodeForDotTags(
 	);
 
 	// Find sibling nodes that are inside the content interval
-	const nodesToMove: PhrasingContent[] = [];
+	const nodesToMove: RootContent[] = [];
 	const indicesToRemove: number[] = [];
 	let endTextNodeIndex: number | null = null;
 	let endTextNode: Text | null = null;
 
 	for (let i = index + 1; i < parent.children.length; i++) {
-		const sibling = parent.children[i] as PhrasingContent;
+		const sibling = parent.children[i];
 		if (!sibling.position) continue;
 
 		const siblingInterval = nodeToInterval(sibling.position, source);
@@ -150,22 +185,34 @@ function processTextNodeForDotTags(
 		}
 	}
 
-	// Build children for the tx-inline node
+	// Build children for the tx-inline node.
+	//
+	// The `as PhrasingContent[]` below is sound on two independent grounds:
+	//  1. processTextNodeForDotTags only runs when the scanner finds a direct
+	//     `text` child, which only exists in phrasing parents (paragraph,
+	//     heading, strong, emphasis, transmissionInline). Block containers
+	//     (blockquote, listItem, transmissionBlock) hold paragraphs, never bare
+	//     text, so every sibling collected here is phrasing content.
+	//  2. Block/heading dot-tags are recognized only at line start, and inline
+	//     dot-tags only inside `{...}` (and only when defined in config.inline),
+	//     so no block/heading node can ever be parsed into the inline tree.
+	//     Malformed/unrecognized dot-tags pass through untouched as plain text.
 	const txChildren: PhrasingContent[] = [];
 	if (split.content) txChildren.push(split.content);
-	txChildren.push(...nodesToMove);
+	txChildren.push(...(nodesToMove as PhrasingContent[]));
 
 	// If closing brace is in a different text node, split it
 	let endTextSplit: { endA: Text | null; endB: Text | null } | null = null;
-	if (endTextNode && endTextNodeIndex !== null) {
+	const endPos = endTextNode?.position;
+	if (endTextNode && endTextNodeIndex !== null && endPos) {
 		// Split the end text node at closing brace
-		const endNodeInterval = nodeToInterval(endTextNode.position!, source);
+		const endNodeInterval = nodeToInterval(endPos, source);
 		const endNodeStart = endNodeInterval.start;
 
 		// Text before closing brace (end_a): from node start to contentEnd
 		const endAText =
 			contentEnd > endNodeStart
-				? source.slice(endNodeStart, contentEnd)
+				? unescapeDotTagContent(source.slice(endNodeStart, contentEnd))
 				: "";
 
 		// Text after closing brace (end_b): from tagEnd to node end
@@ -180,7 +227,7 @@ function processTextNodeForDotTags(
 						type: "text",
 						value: endAText,
 						position: {
-							start: endTextNode.position!.start,
+							start: endPos.start,
 							end: offsetToPoint(contentEnd, source),
 						},
 					}
@@ -191,7 +238,7 @@ function processTextNodeForDotTags(
 						value: endBText,
 						position: {
 							start: offsetToPoint(tagEnd, source),
-							end: endTextNode.position!.end,
+							end: endPos.end,
 						},
 					}
 				: null,
@@ -206,15 +253,18 @@ function processTextNodeForDotTags(
 		indicesToRemove.push(endTextNodeIndex);
 	}
 
-	// Create the tx-inline node
-	const txNode = createInlineNode(tag, variant, txChildren, config);
+	// An empty tag (e.g. `.b{}`) has no content and collapses to nothing.
+	const txNode =
+		txChildren.length > 0
+			? createInlineNode(tag, variant, txChildren, config)
+			: null;
 
 	// Build new children array for parent
-	const newChildren: PhrasingContent[] = [];
+	const newChildren: RootContent[] = [];
 
 	// Add nodes before current index
 	for (let i = 0; i < index; i++) {
-		newChildren.push(parent.children[i] as PhrasingContent);
+		newChildren.push(parent.children[i]);
 	}
 
 	// Add split.before if not empty
@@ -222,8 +272,10 @@ function processTextNodeForDotTags(
 		newChildren.push(split.before);
 	}
 
-	// Add the tx-inline node
-	newChildren.push(txNode);
+	// Add the tx-inline node (omitted entirely when the tag was empty)
+	if (txNode) {
+		newChildren.push(txNode);
+	}
 
 	// Add split.after if not empty
 	if (split.after) {
@@ -241,14 +293,14 @@ function processTextNodeForDotTags(
 	const removeSet = new Set(indicesToRemove);
 	for (let i = index + 1; i < parent.children.length; i++) {
 		if (!removeSet.has(i)) {
-			newChildren.push(parent.children[i] as PhrasingContent);
+			newChildren.push(parent.children[i]);
 		}
 	}
 
 	// Update parent's children
 	parent.children = newChildren;
 
-	return { foundDotTag: true, txNode };
+	return txNode ? { foundDotTag: true, txNode } : { foundDotTag: true };
 }
 
 /**
@@ -290,81 +342,6 @@ function findClosingBrace(source: string, startPos: number): number {
 }
 
 /**
- * Create an inline transmission node
- */
-function createInlineNode(
-	tag: string,
-	variant: string | undefined,
-	children: PhrasingContent[],
-	config: TxConfig,
-): TransmissionInline {
-	const tagConfig = config.inline[tag];
-
-	if (!tagConfig) {
-		// Unknown tag, wrap in span with class
-		return {
-			type: "transmissionInline",
-			tag,
-			variant,
-			children,
-			data: {
-				hName: "span",
-				hProperties: {
-					className: `${config.classPrefix || "tx-"}${tag}${variant ? `-${variant}` : ""}`,
-				},
-			},
-		};
-	}
-
-	// Strategy: markdown - create actual MDAST nodes
-	if (tagConfig.strategy === "markdown") {
-		switch (tagConfig.mdType) {
-			case "strong":
-				return { type: "strong", children } as any;
-			case "emphasis":
-				return { type: "emphasis", children } as any;
-			case "delete":
-				return { type: "delete", children } as any;
-			case "inlineCode": {
-				// Extract text content for inline code
-				const text = children
-					.map((c) => (c.type === "text" ? c.value : ""))
-					.join("");
-				return { type: "inlineCode", value: text } as any;
-			}
-			default:
-				// Unknown md type, create transmission node
-				return {
-					type: "transmissionInline",
-					tag,
-					variant,
-					children,
-				};
-		}
-	}
-
-	// Strategy: html or component - create custom node with data
-	const className =
-		typeof tagConfig.className === "function"
-			? tagConfig.className(variant)
-			: tagConfig.className;
-
-	return {
-		type: "transmissionInline",
-		tag,
-		variant,
-		children,
-		data: {
-			hName: tagConfig.htmlTag || "span",
-			hProperties: {
-				...(className && { className }),
-				...(tagConfig.ariaRole && { role: tagConfig.ariaRole }),
-			},
-		},
-	};
-}
-
-/**
  * Process a text node that has no position (e.g., was modified)
  * Works purely with text value, not source positions
  */
@@ -373,78 +350,71 @@ function processTextNodeByValue(
 	parent: Parent,
 	index: number,
 	config: TxConfig,
-): { foundDotTag: boolean; txNode?: TransmissionInline } {
-	// Find first dot-tag in text
-	const dotTagRegex = /\.(\w+)(?:\.(\w+))?\{/;
-	const match = textNode.value.match(dotTagRegex);
+): { foundDotTag: boolean; txNode?: PhrasingContent } {
+	const dotTagRegex = /\.(\w+)(?:\.(\w+))?\{/g;
+	let match: RegExpExecArray | null = dotTagRegex.exec(textNode.value);
+	while (match !== null) {
+		const tag = match[1];
+		const variant = match[2];
+		const tagConfig = config.inline[tag];
 
-	if (!match || match.index === undefined) {
-		return { foundDotTag: false };
+		if (tagConfig) {
+			const tagStartInText = match.index;
+			const contentStartInText = tagStartInText + match[0].length;
+			const closingBracePos = findClosingBraceInText(
+				textNode.value,
+				contentStartInText,
+			);
+
+			if (closingBracePos !== -1) {
+				// Extract the pieces
+				const beforeText = textNode.value.slice(0, tagStartInText);
+				const contentText = unescapeDotTagContent(
+					textNode.value.slice(contentStartInText, closingBracePos),
+				);
+				const afterText = textNode.value.slice(closingBracePos + 1);
+
+				// Create text nodes (without positions)
+				const beforeNode: Text | null = beforeText
+					? { type: "text", value: beforeText }
+					: null;
+				const contentNode: Text | null = contentText
+					? { type: "text", value: contentText }
+					: null;
+				const afterNode: Text | null = afterText
+					? { type: "text", value: afterText }
+					: null;
+
+				// Build tx node children; an empty tag collapses to nothing
+				const txChildren: PhrasingContent[] = [];
+				if (contentNode) txChildren.push(contentNode);
+				const txNode =
+					txChildren.length > 0
+						? createInlineNode(tag, variant, txChildren, config)
+						: null;
+
+				// Build new children array
+				const newChildren: RootContent[] = [];
+				for (let i = 0; i < index; i++) {
+					newChildren.push(parent.children[i]);
+				}
+				if (beforeNode) newChildren.push(beforeNode);
+				if (txNode) newChildren.push(txNode);
+				if (afterNode) newChildren.push(afterNode);
+				for (let i = index + 1; i < parent.children.length; i++) {
+					newChildren.push(parent.children[i]);
+				}
+				parent.children = newChildren;
+
+				return txNode ? { foundDotTag: true, txNode } : { foundDotTag: true };
+			}
+			// Unclosed: leave literal and keep scanning.
+		}
+
+		match = dotTagRegex.exec(textNode.value);
 	}
 
-	const tag = match[1];
-	const variant = match[2];
-	const tagConfig = config.inline[tag];
-
-	if (!tagConfig) {
-		return { foundDotTag: false };
-	}
-
-	const tagStartInText = match.index;
-	const contentStartInText = tagStartInText + match[0].length;
-
-	// Find closing brace in the text value
-	const closingBracePos = findClosingBraceInText(
-		textNode.value,
-		contentStartInText,
-	);
-	if (closingBracePos === -1) {
-		return { foundDotTag: false };
-	}
-
-	// Extract the pieces
-	const beforeText = textNode.value.slice(0, tagStartInText);
-	const contentText = textNode.value.slice(contentStartInText, closingBracePos);
-	const afterText = textNode.value.slice(closingBracePos + 1);
-
-	// Create text nodes (without positions)
-	const beforeNode: Text | null = beforeText
-		? { type: "text", value: beforeText }
-		: null;
-	const contentNode: Text | null = contentText
-		? { type: "text", value: contentText }
-		: null;
-	const afterNode: Text | null = afterText
-		? { type: "text", value: afterText }
-		: null;
-
-	// Build tx node children
-	const txChildren: PhrasingContent[] = [];
-	if (contentNode) txChildren.push(contentNode);
-
-	// Create tx node
-	const txNode = createInlineNode(tag, variant, txChildren, config);
-
-	// Build new children array
-	const newChildren: PhrasingContent[] = [];
-
-	// Add nodes before current index
-	for (let i = 0; i < index; i++) {
-		newChildren.push(parent.children[i] as PhrasingContent);
-	}
-
-	if (beforeNode) newChildren.push(beforeNode);
-	newChildren.push(txNode);
-	if (afterNode) newChildren.push(afterNode);
-
-	// Add remaining siblings
-	for (let i = index + 1; i < parent.children.length; i++) {
-		newChildren.push(parent.children[i] as PhrasingContent);
-	}
-
-	parent.children = newChildren;
-
-	return { foundDotTag: true, txNode };
+	return { foundDotTag: false };
 }
 
 /**

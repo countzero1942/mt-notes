@@ -5,7 +5,7 @@ import { SKIP, visit } from "unist-util-visit";
 import type { VFile } from "vfile";
 import { createTransmissionBlock } from "./parsers/block";
 import { scanInlineTreeForDotTags } from "./parsers/inline-scanner";
-import type { TxConfig } from "./types";
+import type { HeadingTagConfig, TxConfig } from "./types";
 import { getIndentedBlock } from "./utils/indent";
 import { getSourceText } from "./utils/source";
 
@@ -176,7 +176,7 @@ function processHeadingTag(
 	index: number,
 	tag: string,
 	remainingText: string,
-	tagConfig: any,
+	tagConfig: HeadingTagConfig,
 	source: string,
 	config: TxConfig,
 ) {
@@ -214,14 +214,10 @@ function processHeadingTag(
 	}
 
 	// Create heading node with all children (markdown already parsed)
-	if (tagConfig.strategy === "markdown" && tagConfig.mdType === "heading") {
-		const level =
-			tagConfig.level ||
-			(parseInt(tag.slice(1), 10) as 1 | 2 | 3 | 4 | 5 | 6);
-
+	if (tagConfig.strategy === "markdown") {
 		const headingNode = {
 			type: "heading" as const,
-			depth: level,
+			depth: tagConfig.level,
 			children: node.children as PhrasingContent[],
 		};
 
@@ -230,7 +226,7 @@ function processHeadingTag(
 		// IMMEDIATELY scan the heading's children for inline tags
 		scanInlineTreeForDotTags(headingNode, source, config);
 	} else {
-		// HTML or component strategy
+		// HTML strategy
 		const blockNode = {
 			type: "transmissionBlock" as const,
 			tag,
@@ -241,7 +237,7 @@ function processHeadingTag(
 				},
 			],
 			data: {
-				hName: tagConfig.htmlTag || `h${tagConfig.level || 2}`,
+				hName: tagConfig.htmlTag,
 				hProperties: {
 					className:
 						typeof tagConfig.className === "function"

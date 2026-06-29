@@ -3,7 +3,11 @@
 import type { BlockContent, List, ListItem, PhrasingContent } from "mdast";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import type {
+	BlockComponentConfig,
+	BlockHtmlConfig,
+	BlockMarkdownConfig,
 	BlockTagConfig,
+	ComponentSpec,
 	IndentedLine,
 	ParsedAttributes,
 	TransmissionBlock,
@@ -13,6 +17,11 @@ import type {
 import { linesToText } from "../utils/indent";
 import { parseBlockAttributes, parseInlineAttributes } from "./attributes";
 import { parseInlineTransmission } from "./inline";
+
+/** Exhaustiveness guard: adding a new strategy turns every switchboard red. */
+function assertNever(x: never): never {
+	throw new Error(`Unhandled transmission config: ${JSON.stringify(x)}`);
+}
 
 /**
  * Create a transmission block node from parsed components
@@ -24,7 +33,7 @@ export function createTransmissionBlock(
 	bodyLines: IndentedLine[],
 	config: TxConfig,
 ): BlockContent | TransmissionFragment {
-	const tagConfig: BlockTagConfig = config.block[tag];
+	const tagConfig: BlockTagConfig | undefined = config.block[tag];
 
 	if (!tagConfig) {
 		// Unknown tag - create generic block
@@ -34,13 +43,13 @@ export function createTransmissionBlock(
 	// Parse attributes from heading content
 	const { attributes, contentWithoutAttrs } = parseInlineAttributes(
 		headingContent,
-		tagConfig.attributes,
+		tagConfig.strategy === "markdown" ? undefined : tagConfig.attributes,
 	);
 
 	// Parse block-level attributes from body
 	const { attributes: blockAttrs, contentLines } = parseBlockAttributes(
 		bodyLines.map((l) => l.content),
-		tagConfig.attributes,
+		tagConfig.strategy === "markdown" ? undefined : tagConfig.attributes,
 	);
 
 	// Merge attributes (block-level takes precedence)
@@ -63,28 +72,33 @@ export function createTransmissionBlock(
 	// Parse body content
 	const bodyNodes = parseBodyContent(finalBodyLines, config);
 
-	// Strategy: markdown
-	if (tagConfig.strategy === "markdown") {
-		return createMarkdownBlock(
-			tag,
-			tagConfig.mdType!,
-			headingNodes,
-			bodyNodes,
-			tagConfig.headingTarget,
-			config,
-		);
+	switch (tagConfig.strategy) {
+		case "markdown":
+			return createMarkdownBlock(tag, tagConfig, headingNodes, bodyNodes, config);
+		case "html":
+			return createHtmlBlock(
+				tag,
+				variant,
+				headingNodes,
+				bodyNodes,
+				allAttributes,
+				tagConfig,
+				config,
+			);
+		case "component":
+			return createComponentBlock(
+				tag,
+				variant,
+				headingNodes,
+				bodyNodes,
+				finalBodyLines,
+				allAttributes,
+				tagConfig,
+				config,
+			);
+		default:
+			return assertNever(tagConfig);
 	}
-
-	// Strategy: html or component
-	return createHtmlBlock(
-		tag,
-		variant,
-		headingNodes,
-		bodyNodes,
-		allAttributes,
-		tagConfig,
-		config,
-	);
 }
 
 /**
@@ -117,17 +131,16 @@ function parseBodyContent(
 }
 
 /**
- * Create a markdown block (list, blockquote, etc.)
+ * Create a markdown block (list, blockquote, heading)
  */
 function createMarkdownBlock(
 	tag: string,
-	mdType: string,
+	tagConfig: BlockMarkdownConfig,
 	headingNodes: PhrasingContent[],
 	bodyNodes: BlockContent[],
-	headingTarget: string | undefined,
 	config: TxConfig,
 ): BlockContent | TransmissionFragment {
-	switch (mdType) {
+	switch (tagConfig.mdType) {
 		case "list": {
 			const ordered = tag === "ol";
 
@@ -144,7 +157,7 @@ function createMarkdownBlock(
 			};
 
 			// Handle heading placement
-			if (headingTarget === "placeBefore" && headingNodes.length > 0) {
+			if (tagConfig.headingTarget === "placeBefore" && headingNodes.length > 0) {
 				return {
 					type: "transmissionFragment",
 					children: [
@@ -168,17 +181,16 @@ function createMarkdownBlock(
 		}
 
 		case "heading": {
-			// Extract level from tag (h1, h2, etc.)
-			const level = parseInt(tag.slice(1), 10) as 1 | 2 | 3 | 4 | 5 | 6;
+			// Level is guaranteed present only on the heading member of the union
 			return {
 				type: "heading",
-				depth: level,
+				depth: tagConfig.level,
 				children: headingNodes,
 			};
 		}
 
 		default:
-			return createGenericBlock(tag, undefined, "", [], config);
+			return assertNever(tagConfig);
 	}
 }
 
@@ -191,7 +203,7 @@ function createHtmlBlock(
 	headingNodes: PhrasingContent[],
 	bodyNodes: BlockContent[],
 	attributes: ParsedAttributes,
-	tagConfig: BlockTagConfig,
+	tagConfig: BlockHtmlConfig,
 	config: TxConfig,
 ): TransmissionBlock {
 	const className =
@@ -212,12 +224,60 @@ function createHtmlBlock(
 		attributes,
 		children: bodyNodes,
 		data: {
-			hName: tagConfig.htmlTag || "div",
+			hName: tagConfig.htmlTag,
 			hProperties: {
 				...(className && { className }),
 				...(tagConfig.ariaRole && { role: tagConfig.ariaRole }),
 				...(ariaLabel && { "aria-label": ariaLabel }),
 				...attributes, // Spread attributes as HTML properties
+			},
+		},
+	};
+}
+
+/**
+ * Create a component (island) block.
+ *
+ * NOTE: this emits a server-render placeholder carrying the component spec and
+ * its props. The actual SSR + hydration runtime (island manifest, per-framework
+ * adapters) plugs in here later; for now the placeholder is the stable seam.
+ */
+function createComponentBlock(
+	tag: string,
+	variant: string | undefined,
+	headingNodes: PhrasingContent[],
+	bodyNodes: BlockContent[],
+	bodyLines: IndentedLine[],
+	attributes: ParsedAttributes,
+	tagConfig: BlockComponentConfig,
+	config: TxConfig,
+): TransmissionBlock {
+	const spec: ComponentSpec = tagConfig.component;
+
+	// Props: %-attributes, plus the raw body mapped onto contentProp if requested.
+	const props: ParsedAttributes = { ...attributes };
+	if (spec.contentProp) {
+		props[spec.contentProp] = bodyLines
+			.filter((l) => !l.isVerticalSpace)
+			.map((l) => l.content);
+	}
+
+	return {
+		type: "transmissionBlock",
+		tag,
+		variant,
+		headingContent: headingNodes.length > 0 ? headingNodes : undefined,
+		attributes,
+		// If the body is consumed as a prop, don't also render it as children.
+		children: spec.contentProp ? [] : bodyNodes,
+		data: {
+			hName: "div",
+			hProperties: {
+				"data-tx-component": spec.export ?? "default",
+				"data-tx-source": spec.source,
+				"data-tx-framework": spec.framework ?? "react",
+				"data-tx-hydrate": spec.hydrate ?? "load",
+				"data-tx-props": JSON.stringify(props),
 			},
 		},
 	};
