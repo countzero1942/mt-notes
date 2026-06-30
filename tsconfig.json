@@ -1,48 +1,48 @@
 {
-	"compilerOptions": {
-		"types": ["node", "jest", "@testing-library/jest-dom"],
-		"target": "esnext",
-		"lib": ["dom", "dom.iterable", "esnext"],
-		"allowJs": true,
-		"skipLibCheck": true,
-		"strict": true,
-		"forceConsistentCasingInFileNames": true,
-		"noEmit": true,
-		"esModuleInterop": true,
-		"module": "esnext",
-		"moduleResolution": "bundler",
-		"resolveJsonModule": true,
-		"isolatedModules": true,
-		"jsx": "react-jsx",
-		"incremental": true,
-		"baseUrl": ".",
-		"paths": {
-			"@/*": ["./*"],
-			"@/app/*": ["app/*"],
-			"@/utils/*": ["lib/utils/*"],
-			"@/local-utils/*": ["lib/local-utils/*"],
-			"@/types/*": ["lib/types/*"],
-			"@/server/*": ["lib/server/*"],
-			"@/client-data/*": ["lib/client-data/*"],
-			"@/ui/*": ["lib/ui/*"],
-			"@/styles/*": ["styles/*"],
-			"@/tx": ["lib/transmission/index.ts"],
-			"@/tx/*": ["lib/transmission/*"]
-		},
-		"plugins": [
-			{
-				"name": "next"
-			}
-		]
-	},
-	"include": [
-		"**/*.ts",
-		"**/*.tsx",
-		".storybook/main.ts",
-		".storybook/preview.tsx",
-		"next-env.d.ts",
-		".next/types/**/*.ts",
-		".next/dev/types/**/*.ts"
-	],
-	"exclude": ["node_modules"]
+  "compilerOptions": {
+    "types": ["node", "jest", "@testing-library/jest-dom"],
+    "target": "esnext",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    // "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "@/app/*": ["./app/*"],
+      "@/utils/*": ["./lib/utils/*"],
+      "@/local-utils/*": ["./lib/local-utils/*"],
+      "@/types/*": ["./lib/types/*"],
+      "@/server/*": ["./lib/server/*"],
+      "@/client-data/*": ["./lib/client-data/*"],
+      "@/ui/*": ["./lib/ui/*"],
+      "@/styles/*": ["./styles/*"],
+      "@/tx": ["./lib/transmission/index.ts"],
+      "@/tx/*": ["./lib/transmission/*"]
+    },
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".storybook/main.ts",
+    ".storybook/preview.tsx",
+    "next-env.d.ts",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
 }

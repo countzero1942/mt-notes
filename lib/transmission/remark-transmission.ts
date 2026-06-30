@@ -77,7 +77,11 @@ function processBlockDotTags(
 		if (firstChild?.type !== "text") continue;
 
 		// Check if it matches block dot-tag pattern: .tag: or .tag.variant:
-		const match = firstChild.value.match(/^\.(\w+)(?:\.(\w+))?:\s*(.*)$/);
+		// Match only the FIRST line: markdown lazy-continuation merges the
+		// indented body into this same paragraph/text node, so anchoring to
+		// end-of-string ($) would fail for any multi-line block. Same-line
+		// content (if any) is captured; an indented body is read from source.
+		const match = firstChild.value.match(/^\.(\w+)(?:\.(\w+))?:[ \t]*([^\n]*)/);
 
 		if (!match) continue;
 

@@ -16,7 +16,21 @@ export interface TxConfig {
 	// Markdown node types to scan for dot-tags
 	// e.g., ['strong', 'emphasis', 'delete']
 	scannableMdNodes?: string[];
+
+	// How poetic line blocks (single-newline-separated lines) are rendered.
+	// "CssClassLines": each line is its own <p class="tx-line"> (indent via
+	//   --tx-indent CSS var from a tx-indent-N class).
+	// "LineBreaks": the whole block is one <p> with <br/> between lines, each
+	//   indent rendered as `indentString` repeated per level.
+	// Default: "CssClassLines".
+	poeticTextMode?: PoeticTextMode;
+
+	// Indent string used in "LineBreaks" mode, repeated once per indent level.
+	// Default: four non-breaking spaces.
+	indentString?: string;
 }
+
+export type PoeticTextMode = "CssClassLines" | "LineBreaks";
 
 export type OutputStrategy = "markdown" | "html" | "component";
 

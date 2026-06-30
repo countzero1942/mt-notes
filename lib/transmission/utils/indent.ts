@@ -4,27 +4,21 @@ import type { IndentedLine } from "../types";
 
 /**
  * Get indentation level from a line
- * Counts tabs and converts spaces to tabs (4 spaces = 1 tab)
+ * Tab-only: counts leading TAB characters (leading spaces are not indentation)
  */
 export function getIndentLevel(line: string): number {
+	// Tab-only: a level is one leading TAB character. Leading spaces (e.g. a
+	// 4-space "soft tab") are intentionally NOT counted as indentation — they
+	// pass through as literal content. (Space->tab preprocessing can be added
+	// later if ever needed.)
 	let indent = 0;
-	let spaceCount = 0;
-
 	for (const char of line) {
 		if (char === "\t") {
 			indent++;
-			spaceCount = 0; // Reset space count
-		} else if (char === " ") {
-			spaceCount++;
-			if (spaceCount === 4) {
-				indent++;
-				spaceCount = 0;
-			}
 		} else {
-			break; // Hit non-whitespace
+			break; // Hit non-tab
 		}
 	}
-
 	return indent;
 }
 
@@ -47,7 +41,9 @@ export function getIndentedBlock(
 		// Empty line or colon-only line (vertical spacing marker)
 		if (trimmed === "" || trimmed === ":") {
 			indentedLines.push({
-				content: "",
+				// Preserve which marker it was: ":" keeps a block going as an
+				// in-block vertical space; "" is a true blank (paragraph break).
+				content: trimmed,
 				indent: 0,
 				isVerticalSpace: true,
 				lineNumber: currentIndex + 1,
@@ -94,29 +90,11 @@ export function getIndentedBlock(
  * Get the character length of indentation
  */
 function getWhitespaceLength(line: string, indentLevel: number): number {
+	// Tab-only: strip up to `indentLevel` leading TAB characters.
 	let length = 0;
-	let currentIndent = 0;
-	let spaceCount = 0;
-
-	for (let i = 0; i < line.length && currentIndent < indentLevel; i++) {
-		const char = line[i];
-
-		if (char === "\t") {
-			currentIndent++;
-			spaceCount = 0;
-			length++;
-		} else if (char === " ") {
-			spaceCount++;
-			length++;
-			if (spaceCount === 4) {
-				currentIndent++;
-				spaceCount = 0;
-			}
-		} else {
-			break;
-		}
+	while (length < line.length && length < indentLevel && line[length] === "\t") {
+		length++;
 	}
-
 	return length;
 }
 

@@ -17,6 +17,7 @@ import type {
 import { linesToText } from "../utils/indent";
 import { parseBlockAttributes, parseInlineAttributes } from "./attributes";
 import { parseInlineTransmission } from "./inline";
+import { parsePoeticBody } from "./poetic";
 
 /** Exhaustiveness guard: adding a new strategy turns every switchboard red. */
 function assertNever(x: never): never {
@@ -69,8 +70,14 @@ export function createTransmissionBlock(
 		lineNumber: bodyLines[attrLineCount + i]?.lineNumber || 0,
 	}));
 
-	// Parse body content
-	const bodyNodes = parseBodyContent(finalBodyLines, config);
+	// Parse body content. Lists keep markdown body parsing (each top-level block
+	// becomes a list item); every other block uses poetic-aware parsing so that
+	// single-newline lines are preserved as poetic lines.
+	const isListBlock =
+		tagConfig.strategy === "markdown" && tagConfig.mdType === "list";
+	const bodyNodes = isListBlock
+		? parseBodyContent(finalBodyLines, config)
+		: parsePoeticBody(finalBodyLines, config);
 
 	switch (tagConfig.strategy) {
 		case "markdown":
@@ -297,7 +304,7 @@ function createGenericBlock(
 		? parseInlineTransmission(headingContent, config)
 		: [];
 
-	const bodyNodes = parseBodyContent(bodyLines, config);
+	const bodyNodes = parsePoeticBody(bodyLines, config);
 
 	return {
 		type: "transmissionBlock",
