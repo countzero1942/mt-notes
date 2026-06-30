@@ -2,15 +2,14 @@
 
 import type { Break, BlockContent, Paragraph, PhrasingContent, Text } from "mdast";
 import type { IndentedLine, PoeticLine, TxConfig } from "../types";
-import { parseInlineTransmission } from "./inline";
+import { extractBracedContent, parseInlineTransmission } from "./inline";
 
-// Poetic class names. NOTE: these are kept literally "tx-"-prefixed so the
-// rehype phase (which matches `tx-line` to inject the --tx-indent style) keeps
-// working. classPrefix is not yet applied to poetic classes.
+// Poetic class names. NOTE: these are kept literally "tx-"-prefixed to match
+// the fixed CSS contract in TRANSMISSION_REPORT.md ("Poetic Text
+// Preservation"). classPrefix is not yet applied to poetic classes.
 const CLS_LINE = "tx-line";
 const CLS_LAST = "tx-last-line";
 const CLS_SPACE = "tx-space";
-const CLS_INDENT = (n: number) => `tx-indent-${n}`;
 
 const DEFAULT_INDENT_STRING = "\u00A0\u00A0\u00A0\u00A0"; // 4 non-breaking spaces
 
@@ -20,14 +19,20 @@ type PoeticEntry =
 	| { kind: "space" };
 
 /**
- * Parse a block's indented body into poetic-aware block content.
+ * Parse a run of poetic source lines into poetic-aware block content.
  *
- * Grouping rules (operating on the body lines AFTER the block's content indent
- * has been stripped, so indents here are relative):
+ * Used for BOTH plain markdown paragraphs (a paragraph that spans multiple
+ * source lines IS one poetic unit, since a truly blank line would otherwise
+ * have ended the paragraph node before this function ever saw it) and block
+ * dot-tag bodies (`.bq:` etc., after the block's content indent has been
+ * stripped, so indents there are relative).
+ *
+ * Grouping rules:
  *   - A run of consecutive lines joined by single newlines forms one poetic
  *     unit; each line is preserved as its own poetic line.
  *   - A ":" line is an in-block vertical space — it keeps the unit going.
- *   - A truly blank line ends the unit (paragraph break).
+ *   - A truly blank line ends the unit (paragraph break). This can only occur
+ *     within a block dot-tag body, never within a plain markdown paragraph.
  *   - A unit's first line is expected at indent 0; following lines may be
  *     indented with one or more tabs. Multiple indent-0 lines may appear (each
  *     starts a new "sentence" within the same unit).
@@ -104,13 +109,64 @@ function renderUnit(entries: PoeticEntry[], config: TxConfig): BlockContent[] {
 		return [para];
 	}
 
+	// An inline dot-tag whose braces span more than one of these lines (e.g.
+	// ".b{Bold\ntext}") is NOT poetic text — it's one inline tag whose content
+	// happens to contain a literal newline, which must be preserved verbatim.
+	// Treat the whole unit as one ordinary paragraph in that case, rather than
+	// splitting it into separate poetic lines.
+	const rejoined = rejoinEntries(trimmed);
+	if (hasInlineTagSpanningNewline(rejoined)) {
+		const para: Paragraph = {
+			type: "paragraph",
+			children: parseInlineTransmission(rejoined, config),
+		};
+		return [para];
+	}
+
 	const mode = config.poeticTextMode ?? "CssClassLines";
 	return mode === "LineBreaks"
 		? [renderLineBreaks(trimmed, config)]
 		: renderCssClassLines(trimmed, config);
 }
 
-/** "CssClassLines": one <p class="tx-line ..."> per line. */
+/** Reconstruct a unit's original raw multi-line text (tabs + ":" restored). */
+function rejoinEntries(entries: PoeticEntry[]): string {
+	return entries
+		.map((e) => (e.kind === "space" ? ":" : "\t".repeat(e.indent) + e.content))
+		.join("\n");
+}
+
+/**
+ * True if `text` contains an inline dot-tag (`.tag{...}`) whose matching
+ * closing brace is on a different line than its opening brace — i.e. the
+ * tag's content itself contains a literal newline.
+ */
+function hasInlineTagSpanningNewline(text: string): boolean {
+	const dotTagRegex = /\.(\w+)(?:\.(\w+))?\{/g;
+	let match: RegExpExecArray | null;
+	match = dotTagRegex.exec(text);
+	while (match) {
+		const contentStart = match.index + match[0].length;
+		const { content, endPos } = extractBracedContent(text, contentStart);
+		if (endPos === -1) {
+			// Unclosed tag - nothing spans, keep scanning past it.
+			dotTagRegex.lastIndex = contentStart;
+			match = dotTagRegex.exec(text);
+			continue;
+		}
+		if (content.includes("\n")) return true;
+		dotTagRegex.lastIndex = endPos + 1;
+		match = dotTagRegex.exec(text);
+	}
+	return false;
+}
+
+/**
+ * "CssClassLines": one <p class="tx-line" style="--tx-indent: N"> per line,
+ * per TRANSMISSION_REPORT.md. The CSS variable alone carries the indent — no
+ * separate tx-indent-N class is needed; the CSS contract reads the variable
+ * directly (`padding-left: calc(var(--tx-indent, 0) * 2em)`).
+ */
 function renderCssClassLines(
 	entries: PoeticEntry[],
 	config: TxConfig,
@@ -129,7 +185,6 @@ function renderCssClassLines(
 			return;
 		}
 		const classes = [CLS_LINE];
-		if (entry.indent > 0) classes.push(CLS_INDENT(entry.indent));
 		if (i === lastTextIdx) classes.push(CLS_LAST);
 		out.push(
 			makePoeticLine(
@@ -152,7 +207,10 @@ function makePoeticLine(
 		type: "poeticLine",
 		indent,
 		children,
-		data: { hName: "p", hProperties: { className } },
+		data: {
+			hName: "p",
+			hProperties: { className, style: `--tx-indent: ${indent}` },
+		},
 	};
 }
 

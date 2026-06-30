@@ -42,7 +42,7 @@ This document contains comprehensive knowledge about the Transmission markdown e
 7. **Output Strategies**
    - **markdown**: Converts to standard MDAST nodes (strong, emphasis, etc.)
    - **html**: Creates HTML elements with classes
-   - **component**: For MDX/React components
+   - **component**: Block-only. Loads and hydrates a real framework component (React, Vue, Svelte, or Solid) as an island — NOT MDX; no JSX compiler or React dependency anywhere in the pipeline. See "Component Strategy (Islands)" section below.
 
 8. **HeadingTarget Options**
    - `placeBefore`: Insert heading as paragraph before block
@@ -75,39 +75,45 @@ This document contains comprehensive knowledge about the Transmission markdown e
 ## Indentation & Spacing
 
 9. **Preserving Indentation**
-   - Uses node position data to access original source text
+   - Uses node position data to access original source text (the parsed AST text VALUE strips leading whitespace on continuation lines, so indentation must be read from raw source, not the AST)
    - Extracts indented blocks until dedent detected
-   - Tabs and 4-space equivalents tracked
+   - TAB-ONLY: only leading tab characters count as indentation; leading spaces (e.g. a 4-space "soft tab") are NOT indentation and pass through as literal content (space-handling deferred, out of scope for now)
 
 10. **Poetic Lines**
-    - Use `tx-line` class to remove vertical spacing
-    - CSS custom property `--tx-indent` for indentation
-    - Applied as: `padding-left: calc(var(--tx-indent, 0) * 2em)`
+    - Implemented in `parsers/poetic.ts` via `parsePoeticBody()`, shared by BOTH plain markdown paragraphs that span multiple source lines AND block dot-tag bodies (`.bq:` etc.)
+    - Two render modes via `TxConfig.poeticTextMode`: `"CssClassLines"` (default) — each line is its own `<p class="tx-line" style="--tx-indent: N">`, with the CSS variable set directly on every line (no separate `tx-indent-N` class); `"LineBreaks"` — the whole unit is one `<p>` with `<br>` between lines, indent rendered as `TxConfig.indentString` (default: 4 non-breaking spaces) repeated per level
+    - `tx-last-line` class marks the final text line of a CssClassLines unit (restores normal paragraph bottom margin); a colon spacer line renders as `<p class="tx-line tx-space">`
+    - An inline dot-tag whose braces span multiple lines (e.g. `.b{Bold` + newline + `text}`) is NOT treated as poetic — its content is preserved verbatim as one ordinary paragraph, since that's a different, pre-existing feature (newline-preserving inline content) that happens to share the same multi-line-paragraph signal
 
 11. **Vertical Spacing Rules**
     - Single newline = poetic line (no vertical space)
-    - Double newline = paragraph break
-    - Colon-only line (`:`) = empty line for spacing within indented blocks
+    - Double newline = paragraph break (can only occur within a block dot-tag body — a blank line inside plain markdown always ends the paragraph node before poetic parsing ever sees it)
+    - Colon-only line (`:`) = in-block vertical space that keeps the unit going (in an editor, `:` + enter preserves the block/indent, whereas enter-twice breaks out)
+    - A poetic unit's first line must be at indent 0; later lines may be indented; multiple indent-0 lines may appear within one unit (each starts a new "sentence")
+    - A single bare indent-0 line is just an ordinary `<p>`, not poetic
 
 22. **Block Dot-Tag Processing**
     - Uses node position to access source lines
+    - Tag regex matches only the FIRST line of the block tag (no end-of-string/multiline anchor) — markdown lazy-continuation merges a block's indented body into the same paragraph node as the `.tag:` line, so an end-anchored regex would never match a multi-line block
     - `getIndentedBlock()` extracts lines until dedent
     - `calculateNodesToReplace()` determines MDAST nodes consumed by indented content
 
 ## Implementation Details
 
-12. **Codebase Structure**
-    - `src/types.ts`: TypeScript types
-    - `src/parsers/`: inline, block, heading, attributes
-    - `src/utils/`: indent, source, nodes
-    - `src/remark-transmission.ts`: main plugin
-    - `src/rehype-transmission.ts`: rehype plugin
-    - `src/config.ts`: default configuration
+12. **Codebase Structure** (`lib/transmission/`)
+    - `types.ts`: TypeScript types
+    - `config.ts`: default configuration + `mergeTxConfig()`
+    - `tx-md-parser.ts`: `parseTxMarkdown(markdown, userConfig?)` — the assembled unified pipeline
+    - `parsers/`: `inline.ts`, `inline-scanner.ts`, `block.ts`, `attributes.ts`, `poetic.ts`
+    - `utils/`: `indent.ts`, `source.ts`, `nodes.ts`
+    - `remark-transmission.ts`: main remark plugin
+    - `rehype-transmission.ts`: rehype plugin
+    - (in-file header comments still say "src/..." — a legacy label; the real path has no src/ prefix)
 
 13. **Remark Plugin Processing**
     - **Phase 1**: Process block dot-tags
-    - **Phase 2**: Process heading dot-tags
-    - **Phase 3**: Process inline dot-tags (recursive text node transformation)
+    - **Phase 2**: Process heading dot-tags; also detects poetic text in any plain multi-line paragraph and scans remaining paragraphs for inline dot-tags
+    - **Phase 3**: Scan remaining container nodes (list items, blockquotes, transmission blocks) for inline dot-tags
     - **Phase 4**: Unwrap fragments for multi-node insertions
 
 14. **Inline Dot-Tag Parsing**
@@ -159,6 +165,30 @@ This document contains comprehensive knowledge about the Transmission markdown e
     - Heading tags processed before inline (prevent double-processing)
     - Fragments unwrapped last
 
+## Component Strategy (Islands)
+
+31. **What It Is**
+    - Block-only strategy (`strategy: "component"`) for embedding real, interactive framework components — not MDX, no JSX compiler, no React dependency in the pipeline itself
+    - Framework-agnostic: the SAME compiled tx-markdown output can hydrate on a React, Vue, Svelte, or Solid front end, since the embedding website controls how placeholders are hydrated, not Transmission
+    - Inline islands are intentionally unsupported — a component needs a stable block-level place to mount
+    - The goal: one `unified` pipeline compiles `.tx` markdown to HTML once, deployable on any website front end, with `.tsx`/`.vue`/etc. controls imported per-tag via `config.ts` and used directly in the markdown source as ordinary block dot-tags
+
+32. **ComponentSpec**
+    - `source`: import specifier, e.g. `"@/components/Chart"`
+    - `export?`: named export, defaults to `"default"`
+    - `framework?`: `"react" | "vue" | "svelte" | "solid"`, defaults to `"react"`
+    - `hydrate?`: `"load" | "idle" | "visible" | "none"`, defaults to `"load"`
+    - `contentProp?`: maps the block's indented body onto this named prop (as an array of lines) instead of rendering it as markdown children
+
+33. **Current Output (Placeholder Seam)**
+    - `createComponentBlock()` in `parsers/block.ts` emits a server-render placeholder `<div>` carrying the spec as data-tx-* attributes: `data-tx-component`, `data-tx-source`, `data-tx-framework`, `data-tx-hydrate`, `data-tx-props` (JSON-stringified props, including `%`-attributes and the `contentProp` body)
+    - The actual SSR + hydration runtime (island manifest, per-framework adapters that read these attributes and mount the real component client-side) is NOT yet implemented — the placeholder is the stable seam it will plug into later
+    - If `contentProp` is set, the block's children are NOT also rendered (the body is consumed entirely as that prop, not displayed as markdown content)
+
+34. **Usage**
+    - Configure once in `config.ts`: a block tag maps to `{ strategy: "component", component: {...} }`
+    - Used directly in tx-markdown input as an ordinary block dot-tag, e.g. a `.chart:` block with an indented `%type: bar` attribute line and body content below it
+
 ## Default Configuration
 
 15. **Default Transmission Tags**
@@ -181,17 +211,17 @@ This document contains comprehensive knowledge about the Transmission markdown e
 
 26. **Rehype-Transmission Plugin**
     - Handles `headingTarget` insertions (summary, figcaption, title elements)
-    - Adds CSS custom properties for indents
     - Ensures class prefix consistency
     - Preserves ARIA attributes
+    - (Indent styling for poetic lines is now set directly at node creation in `poetic.ts`, not via a separate rehype pass)
 
 ## Testing & Integration
 
-28. **Testing Plan**
-    - Test Transmission in NextJS project
-    - Verify markdown + tx → MDAST → HTML output on webpages
-    - Use Windsurf Pro for unit testing implementation
-    - Test various scenarios and edge cases
+28. **Testing**
+    - Vitest test suite under `tests/lib/transmission/`, split by topic: `tx-basics.test.ts`, `tx-headings.test.ts`, `tx-poetic-text.test.ts`, `tx-latex.test.ts`
+    - Verify markdown + tx → MDAST → HTML output directly via `parseTxMarkdown()`
+    - `vite-tsconfig-paths` resolves the `@/` path alias in tests
+    - Run via `npx tsc --noEmit` (typecheck) and `npx vitest run`
 
 ## Examples
 
@@ -233,6 +263,14 @@ Whether 'tis nobler
 \t\tin the mind
 ```
 
+### Component Island
+```
+.chart:
+\t%type: bar
+\tJan: 100
+\tFeb: 150
+```
+
 ## Architecture Decisions
 
 ### Why Dot-Tags?
@@ -259,6 +297,11 @@ Whether 'tis nobler
 - Simpler than extending micromark
 - Better error handling
 
+### Why Component Islands Aren't MDX
+- No JSX compiler or React dependency in the pipeline itself
+- A `ComponentSpec` just names an import + how to mount it; framework choice (React, Vue, Svelte, Solid) lives in `config.ts`, not in the markdown author's hands
+- The SAME compiled tx-markdown output is meant to work on any website front end — the embedding site decides how to hydrate the placeholder islands
+
 ## Key Functions Reference
 
 ### Parsing Functions
@@ -266,10 +309,11 @@ Whether 'tis nobler
 - `extractBracedContent()`: Find matching closing braces
 - `parseBlockAttributes()`: Extract block-level attributes
 - `parseInlineAttributes()`: Extract inline attributes
-- `parseBodyContent()`: Parse indented content as markdown
+- `parseBodyContent()`: Parse indented content as markdown (list bodies only)
+- `parsePoeticBody()`: Parse indented/multi-line content into poetic-aware block content (everything else)
 
 ### Utility Functions
-- `getIndentLevel()`: Calculate indentation from line
+- `getIndentLevel()`: Calculate indentation from line (tab-only)
 - `getIndentedBlock()`: Extract indented block from source
 - `linesToText()`: Convert IndentedLine[] to text
 - `calculateNodesToReplace()`: Determine consumed MDAST nodes
@@ -279,9 +323,10 @@ Whether 'tis nobler
 - `createTransmissionBlock()`: Create transmission block node
 - `createMarkdownBlock()`: Convert to markdown AST nodes
 - `createHtmlBlock()`: Convert to HTML with attributes
+- `createComponentBlock()`: Create a component island placeholder (data-tx-* attributes)
 
 ### Phase Functions
 - `processBlockDotTags()`: Phase 1 - Process block tags
-- `processHeadingDotTags()`: Phase 2 - Process heading tags
-- `processInlineDotTags()`: Phase 3 - Process inline tags
+- `processHeadingDotTags()`: Phase 2 - Process heading tags, poetic text, and remaining inline tags
+- `scanInlineTreeForDotTags()`: Phase 3 - Scan remaining container nodes for inline tags
 - `unwrapFragments()`: Phase 4 - Unwrap multi-node insertions

@@ -2,10 +2,12 @@
 
 import type { Node, Paragraph, PhrasingContent, Root, RootContent, Text } from "mdast";
 import { SKIP, visit } from "unist-util-visit";
+import type { Position } from "unist";
 import type { VFile } from "vfile";
 import { createTransmissionBlock } from "./parsers/block";
 import { scanInlineTreeForDotTags } from "./parsers/inline-scanner";
-import type { HeadingTagConfig, TxConfig } from "./types";
+import { parsePoeticBody } from "./parsers/poetic";
+import type { HeadingTagConfig, IndentedLine, TxConfig } from "./types";
 import { getIndentedBlock } from "./utils/indent";
 import { getSourceText } from "./utils/source";
 
@@ -132,7 +134,8 @@ function processBlockDotTags(
 
 /**
  * Process heading dot-tags: .h2 Heading text
- * Also scans ALL paragraphs for inline dot-tags
+ * Also scans ALL paragraphs for inline dot-tags, and detects poetic text in
+ * any plain (non-dot-tag) paragraph that spans multiple source lines.
  */
 function processHeadingDotTags(tree: Root, source: string, config: TxConfig) {
 	visit(tree, "paragraph", (node, index, parent) => {
@@ -166,9 +169,50 @@ function processHeadingDotTags(tree: Root, source: string, config: TxConfig) {
 			}
 		}
 
-		// Not a heading - scan paragraph for inline tags immediately
+		// Poetic-text candidate: a paragraph spanning multiple SOURCE lines is
+		// single-\n-separated poetic text (a truly blank line would otherwise
+		// have ended the paragraph node already, so any paragraph that survived
+		// parsing as ONE node with multiple lines is exactly the boundary the
+		// poetic spec describes). `node.position` is only present on nodes
+		// parsed from the original document source, so this naturally excludes
+		// nodes freshly synthesized by other transmission phases (no position).
+		// List-item paragraphs are excluded — list bodies keep markdown parsing.
+		if (
+			node.position &&
+			node.position.start.line !== node.position.end.line &&
+			parent.type !== "listItem"
+		) {
+			const rawLines = getParagraphSourceLines(source, node.position);
+			const replacement = parsePoeticBody(rawLines, config);
+			parent.children.splice(index, 1, ...replacement);
+			return [SKIP, index];
+		}
+
+		// Not a heading or poetic block - scan paragraph for inline tags immediately
 		scanInlineTreeForDotTags(node, source, config);
 	});
+}
+
+/**
+ * Read the raw source lines spanned by a paragraph's position, preserving
+ * leading tabs that the parsed text VALUE strips on continuation lines (the
+ * same reason block dot-tag bodies read indentation from source rather than
+ * from the AST). A truly blank line cannot occur within these lines — that
+ * would already have ended the paragraph — so only ":" needs to be flagged
+ * as the in-block vertical-space marker.
+ */
+function getParagraphSourceLines(
+	source: string,
+	position: Position,
+): IndentedLine[] {
+	const raw = getSourceText(source, position);
+	const startLine = position.start.line;
+	return raw.split("\n").map((content, i) => ({
+		content,
+		indent: 0,
+		isVerticalSpace: content.trim() === ":",
+		lineNumber: startLine + i,
+	}));
 }
 
 /**

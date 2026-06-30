@@ -200,7 +200,7 @@ export interface PoeticLine extends Node {
 		hName: "p";
 		hProperties: {
 			className: string[];
-			style?: string;
+			style: string;
 		};
 	};
 }

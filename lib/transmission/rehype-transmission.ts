@@ -34,19 +34,6 @@ export function rehypeTransmission(txConfig: TxConfig) {
 				}
 			}
 		});
-
-		// Add indent styles to poetic lines
-		visit(tree, "element", (node: Element) => {
-			if (node.properties?.className) {
-				const classes = Array.isArray(node.properties.className)
-					? node.properties.className
-					: [node.properties.className];
-
-				if (classes.includes("tx-line")) {
-					addIndentStyle(node, txConfig);
-				}
-			}
-		});
 	};
 }
 
@@ -150,29 +137,6 @@ function insertTitleElement(
 	};
 
 	node.children.unshift(title);
-}
-
-/**
- * Add indent style to poetic line elements
- */
-function addIndentStyle(node: Element, config: TxConfig) {
-	const classes = Array.isArray(node.properties.className)
-		? node.properties.className
-		: [node.properties.className];
-
-	// Find indent level from class
-	const indentClass = classes.find(
-		(c) => typeof c === "string" && c.startsWith("tx-indent-"),
-	);
-
-	if (indentClass && typeof indentClass === "string") {
-		const level = parseInt(indentClass.replace("tx-indent-", ""), 10);
-
-		if (!Number.isNaN(level) && level > 0) {
-			// Add CSS custom property
-			node.properties.style = `--tx-indent: ${level}`;
-		}
-	}
 }
 
 /**

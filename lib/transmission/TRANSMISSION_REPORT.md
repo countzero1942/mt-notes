@@ -30,7 +30,7 @@
 - **Unobtrusive syntax** that doesn't conflict with natural writing
 - **Three tag types** for different content structures (inline, heading, block)
 - **Full recursion support** for nested tags
-- **Flexible output** (markdown, HTML, or React components)
+- **Flexible output** (markdown, HTML, or framework-agnostic component islands)
 - **Type-safe configuration** via TypeScript
 - **ARIA-compliant** HTML output
 - **Preserves indentation** for poetic text and code
@@ -234,6 +234,8 @@ empty_line := ':' '\n'
 - Heading content optional (on same line as tag)
 - Colon-only lines (`:`) create vertical spacing
 - Supports attributes via `%` prefix
+
+**Indentation is tab-only:** only literal TAB characters count as indentation. Leading spaces are not converted and pass through as literal content. The examples below show visual indentation for readability, but the actual source uses real tab characters, not spaces.
 
 **Examples:**
 
@@ -743,22 +745,52 @@ Creates HTML elements with classes:
 **Use when:** You need custom styling via CSS.
 
 #### 3. Component Strategy
-Creates MDX/React components:
+Loads and hydrates a real framework component as an island. This is **not MDX** — there's no JSX compiler in the pipeline and no React dependency anywhere in Transmission itself. Component strategy is block-only (inline islands are intentionally unsupported; a component needs a stable block-level place to mount) and framework-agnostic: a `ComponentSpec` just names an import and how to mount it, for any of React, Vue, Svelte, or Solid.
 
 ```typescript
 {
-  'Chart': {
+  'chart': {
     strategy: 'component',
-    component: 'Chart',
+    component: {
+      source: '@/components/Chart',  // import specifier
+      export: 'default',             // named export (default: 'default')
+      framework: 'react',            // 'react' | 'vue' | 'svelte' | 'solid'
+      hydrate: 'visible',            // 'load' | 'idle' | 'visible' | 'none'
+      contentProp: 'data',           // indented body maps onto this prop
+    },
     attributes: {
-      type: { type: 'string', required: true },
-      data: { type: 'array', required: true }
+      type: { type: 'string', required: true }
     }
   }
 }
 ```
 
-**Use when:** You need interactive components.
+The tag is then used directly in tx-markdown input, exactly like any other block dot-tag:
+
+```markdown
+.chart:
+	%type: bar
+	Jan: 100
+	Feb: 150
+	Mar: 200
+```
+
+The pipeline doesn't render the component itself — it emits a server-rendered placeholder element carrying the spec as `data-tx-*` attributes:
+
+```html
+<div data-tx-component="default"
+     data-tx-source="@/components/Chart"
+     data-tx-framework="react"
+     data-tx-hydrate="visible"
+     data-tx-props='{"type":"bar","data":["Jan: 100","Feb: 150","Mar: 200"]}'>
+</div>
+```
+
+`%`-attributes become props directly; if `contentProp` is set, the block's indented body is consumed entirely as that prop (an array of lines) rather than also being rendered as markdown children.
+
+**Use when:** You need a real interactive component (chart, calculator, graph, etc.) and want the *same* compiled tx-markdown to work on any front-end framework — the website embedding Transmission's output decides how to hydrate these placeholders, not Transmission itself. That's the underlying goal: one `unified` pipeline, deployable on any site, with `.tsx`/`.vue`/etc. controls imported per-tag via `config.ts` and used directly in the markdown source as block dot-tags.
+
+**Current status:** the placeholder element above is the stable seam. The SSR + hydration runtime that actually reads these `data-tx-*` attributes and mounts the real component client-side (an island manifest plus a small per-framework adapter) is the next layer to build on top of this.
 
 ### Variant System
 
@@ -1076,6 +1108,19 @@ As Einstein said, .hl.g{imagination is more important than knowledge}.
     .b{John}: Send proposal by Friday
     .b{Sarah}: Review contracts
 ```
+
+### 6. Interactive Components Across Frameworks
+
+**Embed a real component as an island, hydrated however the embedding site chooses:**
+
+```markdown
+.graph:
+	%type: scatter
+	x: 1, 2, 3, 4
+	y: 4, 2, 8, 6
+```
+
+The same compiled output works whether the site hydrates it with React, Vue, Svelte, or Solid — the dot-tag's `config.ts` entry names the import and framework once; the markdown author never thinks about it.
 
 ---
 
