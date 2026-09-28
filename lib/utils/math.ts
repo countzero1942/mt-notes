@@ -1,5 +1,5 @@
-import { logh } from "@/utils/log";
 import { log } from "node:console";
+import { logh } from "@/utils/log";
 
 /**
  * Gets a random integer between min-inclusive and max-inclusive
@@ -8,14 +8,8 @@ import { log } from "node:console";
  * @param maxIncl Max integer inclusive
  * @returns Random integer in min-inclusive and max-inclusive
  */
-export function randomInteger(
-	minIncl: number,
-	maxIncl: number
-) {
-	return (
-		Math.floor(Math.random() * (maxIncl - minIncl + 1)) +
-		minIncl
-	);
+export function randomInteger(minIncl: number, maxIncl: number) {
+	return Math.floor(Math.random() * (maxIncl - minIncl + 1)) + minIncl;
 }
 
 /**
@@ -26,10 +20,7 @@ export function randomInteger(
  * @param maxExcl Max real number exclusive
  * @returns Random floating-point number in min-inclusive and max-exclusive
  */
-export function randomNumber(
-	minIncl: number,
-	maxExcl: number
-) {
+export function randomNumber(minIncl: number, maxExcl: number) {
 	return Math.random() * (maxExcl - minIncl) + minIncl;
 }
 
@@ -41,11 +32,8 @@ export function randomNumber(
  * @param max Maximum value
  * @returns Clamped number
  */
-export const clamp = (
-	num: number,
-	min: number,
-	max: number
-) => Math.min(Math.max(num, min), max);
+export const clamp = (num: number, min: number, max: number) =>
+	Math.min(Math.max(num, min), max);
 
 /**
  * Rounds a floating point number to `places` number
@@ -72,16 +60,15 @@ export const clamp = (
  *
  * @returns The fixed-place rounded floating point number
  */
-export const fixedRound = (
-	x: number,
-	places: number = 0
-) => {
+export const fixedRound = (x: number, places: number = 0) => {
 	switch (places) {
 		case 0:
 			return Math.round(x);
-		default:
-			const pow = Math.pow(10, places);
+		default: {
+			//const pow = Math.pow(10, places);
+			const pow = 10 ** places;
 			return Math.round(x * pow) / pow;
+		}
 	}
 };
 
@@ -104,10 +91,7 @@ export const fixedRound = (
  * @returns The rounded number which may include floating point errors.
  * So compare numbers with `areEquals(a,b)` not `a === b`
  */
-export function precisionRound(
-	n: number,
-	sigDigits: number
-) {
+export function precisionRound(n: number, sigDigits: number) {
 	// 123,456,789 -> round(-3) -> 123,456,000
 	// num-digs: 9, sig-digs: 6, round: -3
 	// sig-digs - num-digs = round
@@ -235,7 +219,7 @@ export function areEqual(a: number, b: number): boolean {
 		case a === 0 || b === 0:
 			return false;
 		// case: both a and b are non-zero: log(n) is safe
-		default:
+		default: {
 			const logA = getLogForRelativeEpsilon(a);
 			const logB = getLogForRelativeEpsilon(b);
 			if (logA !== logB) {
@@ -243,13 +227,13 @@ export function areEqual(a: number, b: number): boolean {
 				// they cannot be equal within floating-point error.
 				return false;
 			}
-			const relativeEpsilon =
-				getRelativeEpsilonFromLog(logA);
+			const relativeEpsilon = getRelativeEpsilonFromLog(logA);
 			// For subnormal numbers (relativeEpsilon === 0), only exact
 			// equality is possible; no floating-point error margin.
 			// For normal numbers, checks if difference is within the
 			// scaled epsilon.
 			return Math.abs(a - b) <= relativeEpsilon;
+		}
 	}
 }
 
@@ -287,7 +271,7 @@ export const safeAdd = (a: number, b: number) => {
 		return sum;
 	}
 
-	if (sum === 0 || isNaN(sum)) {
+	if (sum === 0 || Number.isNaN(sum)) {
 		// If the result is exactly zero or NaN, return as-is
 		// (covers +Infinity + -Infinity and other special cases).
 		return sum;
@@ -328,9 +312,7 @@ export const isEven = (n: number) => n % 2 === 0;
  * @param numbers The numbers to add
  * @returns The sum, with floating-point error handling
  */
-export const safeAddMany = (
-	...numbers: number[]
-): number => {
+export const safeAddMany = (...numbers: number[]): number => {
 	if (numbers.length === 0) return 0;
 	return numbers.reduce((acc, n) => safeAdd(acc, n), 0);
 };
@@ -360,7 +342,7 @@ export const isOdd = (n: number) => n % 2 === 1;
 export const getDigitAccuracy = (
 	a: number,
 	b: number,
-	sigDigits = 15
+	sigDigits = 15,
 ): number => {
 	const logA = Math.floor(Math.log10(Math.abs(a))) + 1;
 	const logB = Math.floor(Math.log10(Math.abs(b))) + 1;
@@ -371,19 +353,13 @@ export const getDigitAccuracy = (
 	const numDigits = Math.ceil(Math.log10(Math.abs(a)));
 	const roundPlaces = clamSigDigits - numDigits;
 
-	const shiftA = Math.floor(
-		Math.pow(10, roundPlaces) * Math.abs(a)
-	);
-	const shiftB = Math.floor(
-		Math.pow(10, roundPlaces) * Math.abs(b)
-	);
+	const shiftA = Math.floor(10 ** roundPlaces) * Math.abs(a);
+	const shiftB = Math.floor(10 ** roundPlaces) * Math.abs(b);
 
 	let matches = 0;
 	for (let i = sigDigits - 1; i >= 0; i--) {
-		const digA =
-			Math.floor(shiftA / Math.pow(10, i)) % 10;
-		const digB =
-			Math.floor(shiftB / Math.pow(10, i)) % 10;
+		const digA = Math.floor(shiftA / 10 ** i) % 10;
+		const digB = Math.floor(shiftB / 10 ** i) % 10;
 		if (digA === digB) {
 			matches++;
 		} else {

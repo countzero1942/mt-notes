@@ -1,8 +1,8 @@
 "use client";
 
-import { Box, Button, Grid } from "@mantine/core";
+import { Box, Grid } from "@mantine/core";
 import type prettier from "prettier";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { parseTxMarkdownService } from "@/server/markdown-parser";
 // import { CodeBlock } from "./code-block";
 import { CodeBlockWithCopy } from "./copy-code-block";
@@ -17,12 +17,32 @@ export const MarkdownTxSection = ({
 	markdown,
 }: MarkdownTxSectionProps) => {
 	const [html, setHtml] = useState<string>("");
+	const [isLoading, setIsLoading] = useState<boolean>(false);
+	const [error, setError] = useState<string | null>(null);
 
-	async function handleConvert() {
-		const options: prettier.Options = { printWidth: 40, tabWidth: 2 };
-		const htmlString = await parseTxMarkdownService(markdown, options);
-		setHtml(htmlString);
-	}
+	useEffect(() => {
+		async function handleConvert() {
+			setIsLoading(true);
+			setError(null);
+			try {
+				const options: prettier.Options = {
+					printWidth: 40,
+					tabWidth: 2,
+				};
+				const htmlString = await parseTxMarkdownService(markdown, options);
+				setHtml(htmlString);
+			} catch (err) {
+				setError(`Error converting markdown to HTML: ${err}`);
+			} finally {
+				setIsLoading(false);
+			}
+		}
+
+		handleConvert();
+	}, [markdown]);
+
+	if (isLoading) return <div>Loading...</div>;
+	if (error) return <div>Error: {error}</div>;
 
 	return (
 		<section>
@@ -42,9 +62,7 @@ export const MarkdownTxSection = ({
 						dangerouslySetInnerHTML={{ __html: html }}
 					/>
 				</Grid.Col>
-				<Grid.Col span={12}>
-					<Button onClick={handleConvert}>Convert</Button>
-				</Grid.Col>
+				<Grid.Col span={12}></Grid.Col>
 			</Grid>
 		</section>
 	);

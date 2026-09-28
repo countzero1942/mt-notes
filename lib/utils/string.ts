@@ -1,7 +1,7 @@
+import { get } from "node:http";
+import memoizee from "memoizee";
 import { log, logh } from "@/utils/log";
 import { clamp } from "@/utils/math";
-import memoizee from "memoizee";
-import { get } from "node:http";
 
 /**
  * Gets string with a number of tabs repeating.
@@ -13,7 +13,7 @@ export const getTabIndentString = memoizee(
 	(numOfTabs: number): string => {
 		return "\t".repeat(numOfTabs);
 	},
-	{ maxAge: 5000 }
+	{ maxAge: 5000 },
 );
 
 export const isCodePointLoneSurrogate = (codePoint: number) => {
@@ -77,8 +77,8 @@ export const getCodePointCharLength = (codePoint: number) => {
 export const spacesToTabs = (text: string, tabSize: number): string => {
 	const pattern = `^( {${tabSize}})+`;
 	const rx = new RegExp(pattern, "gm");
-	const tabbedStr = text.replace(rx, match =>
-		getTabIndentString(match.length / tabSize)
+	const tabbedStr = text.replace(rx, (match) =>
+		getTabIndentString(match.length / tabSize),
 	);
 	return tabbedStr;
 };
@@ -95,9 +95,9 @@ export const spacesToTabs = (text: string, tabSize: number): string => {
 export const countOccurencesOf = (
 	source: string,
 	match: string,
-	pos: number = 0
+	pos: number = 0,
 ): number => {
-	if (match.length == 0) {
+	if (match.length === 0) {
 		return 0;
 	}
 	pos = clamp(pos, 0, source.length);
@@ -125,7 +125,7 @@ export const countOccurencesOf = (
  */
 export const splitStringOnce = (
 	source: string,
-	split: string
+	split: string,
 ): readonly string[] => {
 	// abc: def
 	// 01234567
@@ -252,10 +252,7 @@ export const cleanLineOfMultipleSpaces = (line: string) => {
  * @param lines The array of strings to word wrap
  * @returns The array of strings with word wrapping inserted
  */
-export const wordWrapLinesToMaxChars = (
-	lines: string[],
-	maxChars: number
-) => {
+export const wordWrapLinesToMaxChars = (lines: string[], maxChars: number) => {
 	const wrapLine = (line: string, wrappedLines: string[]) => {
 		const words = line.split(" ");
 		let currentLine: {
@@ -352,7 +349,7 @@ export const removeEmptyLinesFromStartAndEnd = (lines: string[]) => {
 export const cleanJSDocDescription = (
 	description: string,
 	eliminateParams: boolean = true,
-	maxLineLength: number = 80
+	maxLineLength: number = 80,
 ) => {
 	const cleanLineOfCommentTags = (line: string) => {
 		switch (true) {
@@ -369,7 +366,7 @@ export const cleanJSDocDescription = (
 		}
 	};
 
-	let lines = description.split("\n").map(line => {
+	let lines = description.split("\n").map((line) => {
 		return cleanLineOfCommentTags(line.trim());
 	});
 
@@ -385,7 +382,7 @@ export const cleanJSDocDescription = (
 export const getRepeatingMatchesCount = (
 	source: string,
 	match: string,
-	index: number = 0
+	index: number = 0,
 ) => {
 	// abcabc
 	// 0123456
@@ -407,7 +404,7 @@ export const getRepeatingMatchesCount = (
 
 export const getMinTabCharsCount = (
 	lines: string[],
-	tabString: string = "\t"
+	tabString: string = "\t",
 ): {
 	minTabCharsCount: number;
 	tabCharMismatchCount: number;
@@ -431,9 +428,7 @@ export const getMinTabCharsCount = (
 	}
 	return {
 		minTabCharsCount:
-			minTabCharsCount === Number.MAX_SAFE_INTEGER
-				? 0
-				: minTabCharsCount,
+			minTabCharsCount === Number.MAX_SAFE_INTEGER ? 0 : minTabCharsCount,
 		tabCharMismatchCount,
 	};
 };
@@ -471,7 +466,7 @@ export type CleanMultiLineOptions = {
  */
 export const cleanMultiLineArray = (
 	lines: string[],
-	options?: CleanMultiLineOptions
+	options?: CleanMultiLineOptions,
 ): readonly string[] => {
 	const tabString = options?.tabString ?? "\t";
 	const extraIndents = options?.extraIndents ?? 0;
@@ -480,7 +475,7 @@ export const cleanMultiLineArray = (
 
 	const { minTabCharsCount, tabCharMismatchCount } = getMinTabCharsCount(
 		lines,
-		tabString
+		tabString,
 	);
 
 	if (tabCharMismatchCount > 0) {
@@ -489,7 +484,7 @@ export const cleanMultiLineArray = (
 		];
 	}
 
-	lines = lines.map(line => {
+	lines = lines.map((line) => {
 		if (line === "") return "";
 		const tabCharsCount = getRepeatingMatchesCount(line, tabString);
 
@@ -501,7 +496,7 @@ export const cleanMultiLineArray = (
 
 	if (extraIndents > 0) {
 		const extraIndentString = tabString.repeat(extraIndents);
-		lines = lines.map(line => {
+		lines = lines.map((line) => {
 			return `${extraIndentString}${line}`;
 		});
 	}
@@ -525,9 +520,9 @@ export const cleanMultiLineArray = (
  */
 export const cleanMultiLineString = (
 	multiLineString: string,
-	options?: CleanMultiLineOptions
+	options?: CleanMultiLineOptions,
 ) => {
-	let lines = multiLineString.split("\n").map(line => line.trimEnd());
+	let lines = multiLineString.split("\n").map((line) => line.trimEnd());
 
 	lines = cleanMultiLineArray(lines, options) as string[];
 
@@ -550,9 +545,9 @@ export const cleanMultiLineString = (
  */
 export const cleanMultiLineStringToArray = (
 	multiLineString: string,
-	options?: CleanMultiLineOptions
+	options?: CleanMultiLineOptions,
 ): readonly string[] => {
-	let lines = multiLineString.split("\n").map(line => line.trimEnd());
+	let lines = multiLineString.split("\n").map((line) => line.trimEnd());
 
 	lines = cleanMultiLineArray(lines, options) as string[];
 
