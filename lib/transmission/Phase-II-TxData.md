@@ -2,7 +2,9 @@
 
 **Transmission (Tx) — immutable, statically typed data for TxDocs**
 
-*Drafted 27 September 2026.* This document specifies TxData, the second of four TxPhases. Nothing in it is implemented yet; every section is a target. §22 records what is open.
+*Drafted 27 September 2026; revised 28 September 2026.* This document specifies TxData, the second of four TxPhases. Nothing in it is implemented yet; every section is a target. §22 records what is open.
+
+**Revision 28 September 2026.** Fence name settled as `tx-d`. 1-D arrays accept members, array references, and both mixed; rank decides flattening and there is no spread operator (§8.5, §8.6). Imported JavaScript functions (§16.6). §20 becomes *Diagnostics and Editor Tooling*: the VS Code extension with colouring, `.`/`%`-triggered autocomplete and hover is first-class; the Obsidian plugin is a future version. The open-items register gains a status column (§22).
 
 **Status markers**
 
@@ -12,6 +14,8 @@
 | ❌ | Designed, not built |
 | ❓ | Open — see §22 |
 | 🔮 | Deliberately deferred to a later phase |
+
+In the §22 Status column: ✅ resolved · 🟡 partially resolved · 🟠 unresolved.
 
 ---
 
@@ -36,7 +40,7 @@
 17. [Compilation and Erasure](#17-compilation-and-erasure)
 18. [Identity and Interning](#18-identity-and-interning)
 19. [The Bridge to TxDoc and TxGen](#19-the-bridge-to-txdoc-and-txgen)
-20. [Error Handling and Diagnostics](#20-error-handling-and-diagnostics)
+20. [Diagnostics and Editor Tooling](#20-diagnostics-and-editor-tooling)
 21. [Implementation Plan](#21-implementation-plan)
 22. [Open Items Register](#22-open-items-register)
 23. [Design Notes](#23-design-notes)
@@ -99,7 +103,7 @@ n: 42
 
 A fenced code block, not a custom syntax. `remark-parse` hands over a `code` node with `lang: "tx-d"` and the raw `value`, blank lines preserved, untouched by every later phase. This is the reason for the choice: it gives Phase 0 a claimable node with no micromark extension, and it renders inert in Obsidian. (Obsidian's `%%` is a comment delimiter, which is why an earlier `%%data:` design was abandoned.)
 
-❓ Fence name: `tx-d` or `tx-data`. Pick before code.
+✅ The fence name is **`tx-d`**.
 
 **A `.txd` file.** The same grammar in its own file. Used for global heads and for standalone typed data that anything can consume via `tx data --out json`.
 
@@ -128,10 +132,14 @@ Every field in the global head is top-level in every document's module trait. Fe
 
 Both are project files, configurable in location. They have access to `TxConfig` because `.$$` values go through the Tx-md pipeline (§19.4).
 
+**TxComponent props traits are global too.** Each component's props are rewritten as a TxData trait (TxDoc §15.4), and every such trait is in scope in every document, so `in .DesmosProps` works in any fence. Whether they live in the TxDoc global head itself or in `.txd` files it imports is open (§22 #38); either way a name defined twice across global files is an error.
+
+"Global" is deliberately simple. The output is an SSG document tree built in one pass, not a web application, so one project-wide scope is enough.
+
 ### 3.4 Scope and resolution ✅
 
 - **Data is parsed before any text is walked.** So a TxKeyRef anywhere in a document resolves against everything in every fence, regardless of position.
-- **Inside the data, declaration order governs.** `m: >> .n + 1` before `n: 42` is an error: nothing may reference what does not yet exist. This kills reference cycles structurally rather than by detection.
+- **Inside the data, declaration order governs — above, at data-block level.** `m: >> .n + 1` before `n: 42` is an error: nothing may reference what does not yet exist. This kills reference cycles structurally rather than by detection. Global heads and props traits count as above everything; then earlier fences in document order; then earlier fields in the same fence. (Inside a trait body, forward references to the trait's own members are legal — §17.2.)
 - **A `_meta.md` fence is scoped to its folder.** Scope comes from line-range containment, established at Phase 0, not from the block tree.
 
 ---
@@ -416,17 +424,42 @@ Fragile by nature: adding a required field upstream shifts every positional call
 
 Both open with a dotted name in some cases. The discriminator is the assignment colon: `.vals:` names a member; `.v1` alone is a positional reference. Mixing named and positional in one body is an error.
 
-### 8.5 Array flattening ✅ / ❓
+### 8.5 Filling a 1-D array ✅ / ❓
 
-When a parameter is a one-dimensional array, inputs flatten:
+A one-dimensional array field or parameter accepts four input forms:
 
 ```
 sum in .sum: 1.23, 3.45, 5.67       // members
 s5 in .sum: .v1                     // one array by reference
-s6 in .sum: .v1, .v2                // two arrays, combined
+s6 in .sum: .v1, .v2                // several arrays, flattened into one
+s7 in .sum: 1.23, .v1, 5.67         // members and arrays, mixed
 ```
 
-❓ Flattening is greedy, so a trait with an array-typed required field *and* other required fields cannot use the tuple form unambiguously. Rule needed: array-typed required fields last, or named form mandatory in that case. Nested arrays (`.R[][]`) passed positionally also need a spread-versus-pass distinction.
+**Rank decides, and there is no spread operator.** For a `.T[]` input, an item of type `.T` is a member and an item of type `.T[]` is flattened in. For `.T[][]`, a `.T[]` item is a row and a `.T[][]` item is flattened in. Handing several arrays to a 1-D field can only mean *combine them* — otherwise why the apparent type mismatch? — so the mismatch is the signal. Simple and intuitive rather than a grammar rule to nitpick. (Settles §22 #11.)
+
+❓ Rank does not settle one case. A trait with an array-typed required field *and* another required field of the element type, constructed by tuple — `vals in .N[]` and `n in .N`, then `f in .Foo: 1, 2, 3, 4` — gives no mismatch to show where the array ends. Rule needed: array-typed required fields last, or the named form mandatory for such traits (§22 #10).
+
+### 8.6 No spread operator ✅
+
+Tx has no `...`. The two places other languages reach for one use a plain rule instead: filling a 1-D array (§8.5), and handing a whole props structure to a TxComponent with `%props:` (TxDoc §15.4). The remaining job a spread does — shared defaults with per-use overrides — is multi-stage construction:
+
+```
+GraphBase add .DesmosProps:
+	.settings:
+		.xAxisStep: 1.5708
+
+g1 in .GraphBase:
+	.expressions:
+		.id: line1
+		.latex: y = sin(x)
+
+g2 in .GraphBase:
+	.expressions:
+		.id: line2
+		.latex: y = cos(x)
+```
+
+`GraphBase` holds the shared settings; `g1` and `g2` fill the rest. An override replaces a trait-typed field wholesale (§7.3), so settings varied independently belong in separate fields.
 
 ---
 
@@ -941,6 +974,12 @@ This solves three problems at once:
 
 Compiler-side file reading is separate and permitted — a build step may read a `.csv` and hand the parsed rows to user code as data. The file is then a build input, hashed into the manifest, and determinism survives. `>>` bodies themselves never do I/O.
 
+### 16.6 Imported JavaScript functions ❓
+
+JavaScript (and perhaps TypeScript) functions can be imported so that any `>>` body in the project may call them. Importing is **explicit** — each function is named in a project file, not discovered — and where that declaration lives is not yet fixed (§22 #37). One project-wide set is enough, for the same reason global scope is simple (§3.3).
+
+Imported functions run in the same Worker as the bodies that call them (§16.5), so they obey the same rules: pure, deterministic, no I/O. The `math.ts` helpers (`safeAdd`, `safeSum`, `fixedRound`, `precisionRound`, §13.8) are the first candidates. The editor offers imported functions, with their signatures, for completion and hover (§20).
+
 ---
 
 ## 17. Compilation and Erasure
@@ -1017,13 +1056,13 @@ Fixed in Phase I, inherited here:
 
 | Target | How props reach the component |
 |---|---|
-| Obsidian | the plugin holds the object in memory — `createRoot` |
+| Obsidian (future plugin) | the plugin holds the object in memory — `createRoot` |
 | Website, build | the same object, in Node — `renderToString` |
 | Website, browser | a JSON script block; `JSON.parse` on hydration |
 
 **TxKeyRefs resolve before serialization.** `latex: n = %.n` ships as `"n = 42"`. The browser receives plain data and needs no resolver, so **no TxData machinery exists in the client bundle.** Types erase at the JSON boundary; checking happened at build.
 
-Prop merge precedence, lowest to highest: `headingProp` → Heading-Area attributes → `tx-d` data → `contentProp`.
+**How props are supplied** — named first-level TxAttributes, or the whole structure with `%props:`, never both, and no spread — is TxDoc §15.4. React components are TypeScript and lie entirely outside the Tx domain: they receive only erased JavaScript data or JSON.
 
 ❓ Three declarations of one shape must agree — the TypeScript props interface, the Tx trait, and `TxConfig.ts`. Tx validates note values against the trait; nothing validates the trait against TypeScript.
 
@@ -1086,7 +1125,7 @@ A `.$$` value goes through the Tx-md pipeline, which resolves against `TxConfig`
 
 ---
 
-## 20. Error Handling and Diagnostics
+## 20. Diagnostics and Editor Tooling
 
 ### 20.1 Default rule ✅
 
@@ -1111,15 +1150,88 @@ Every parse and resolve step returns `{line, col, message}` rather than throwing
 
 The unfilled-field message is the one that makes multi-stage construction usable — a reader four traits down cannot tell locally whether a reference constructs or errors, so the compiler must say what is missing and where it came from.
 
-### 20.3 Tooling order ✅
+### 20.3 The VS Code extension ✅ decided / ❌ not built
 
-1. **Position-accurate diagnostics** — unavoidable work; everything else is a shell.
-2. **`tx check <glob>`** — nearly free once 1 exists, catches most mistakes across a whole vault.
-3. **A TextMate grammar** — a JSON file, no extension host code, gives colour inside `tx-d` fences. Structural typos become *visible*. Best effort-to-value ratio on the list.
-4. **Diagnostics in VSCode** — extension host calls the parser on save.
-5. **Autocomplete** — most work; defer.
+The editor target is a **VS Code extension** giving code colouring, **autocomplete**, and **hover information over fields and trait types**, for Tx-md text, `tx-d` fences and `.txd` files. Autocomplete and hover are first-class, not deferred. They are what make multi-stage construction usable: whether `in .T` awaits a definition or constructs immediately cannot be seen on the line (§8.2).
 
-VSCode before Obsidian: diagnostics, document symbols and TextMate grammars are built in, where Obsidian needs each hand-rolled as CodeMirror decorations, plus a plugin review and a remote-code policy.
+The Obsidian plugin is a future version (TxDoc §16.6). Obsidian stays the authoring tool; `tx-d` fences are edited in VS Code with the Tx extension; the result is viewed by building the site or running it in dev.
+
+### 20.4 Triggers: `.` and `%` only ✅
+
+Every reference in Tx carries a sigil. Dot-tags, trait types and field references begin with `.`; TxAttributes, TxSettings and key attributes begin with `%`; TxKeyRefs begin with `%.`. Nothing in prose begins a word with either character — which is what makes dot-tags safe in the first place. So completion fires **only when `.` or `%` is typed at the start of a token**:
+
+- **In Tx-md text:** after line start, whitespace, `{` or `(`; and `.` directly after `%`. Never after a letter, digit or another `.`, so `end.`, `3.14`, `...` and `50%` never trigger. Never on the second `%` of `%%`.
+- **Inside `tx-d` and `.txd`:** the same, plus `.` after a name in a member chain (`.f1.to.$`, `.Foo.a`).
+
+Contrast languages whose names are bare words, where every keystroke must be treated as a possible completion. VS Code's letter-by-letter quick suggestions are switched off for the Tx language IDs. Ctrl+Space still works anywhere, and the server works out the context from a half-typed `.nam|` or `%nam|`.
+
+### 20.5 What completion offers ✅
+
+| Cursor after | Offers |
+|---|---|
+| `.` at line start in Tx-md text | TxHeading and TxBlock tags |
+| `.` mid-line in Tx-md text | TxInline tags |
+| `%` after a TxElement's content | its TxAttributes; for a TxComponent, the first-level fields of its props trait, plus `%props` |
+| `%` on a list item line | TxSettings (`%ol-A`, `%ul-C`, …) |
+| `%.` in Tx-md text, or in a `.$` / `.$$` value | fields of the document's module trait |
+| `.` after `in`, `add` or `of` | trait types — system types (Appendix B) and traits in scope |
+| `.` after `on` | a base trait first, then only `^` interfaces (§9.1) |
+| `.` after `as` | only the arms of that field's XOR set (§11.4) |
+| `.` at the start of a line in a construction body | members of the trait not yet defined (§7.2) |
+| `.` after a name | that value's or trait's members |
+| `%` in a `tx-d` key head | key attributes: `%;`, `%,`, `%sp`, `%<` |
+| `.` in a `>>` body | members, then imported JavaScript functions (§16.6) |
+
+Tag names come from the `TxConfig.ts` tag tables. How the editor reads them without executing component code is open (§22 #40).
+
+### 20.6 Scope: declaration order keeps the list small ✅
+
+Because nothing may reference what does not yet exist (§3.4), the candidates at any point in the data are exactly what is **above, at data-block level**: global scope (the global head and every TxComponent props trait) first, then earlier fences in document order, then earlier fields in the same fence. There are no cycles to guard against and no forward declarations to index, so the candidate list is always small and already known when `.` is typed.
+
+Two places see more:
+
+- **Tx-md text.** Data blocks are processed before any text, so `%.` in text offers every field in every fence of the document, above or below. Here typing `%.` offers `value`:
+
+````
+My value is %.value
+
+```tx-d
+value: 42
+```
+````
+
+- **Inside a trait body.** Forward references to the trait's own members are legal (§17.2), so completion inside a body offers all of the trait's members, inherited ones included.
+
+### 20.7 Hover ✅
+
+| Over | Shows |
+|---|---|
+| a field | kind (§6), type, literal value if any, and origin — the trait it was inherited or flattened from (§12.3) |
+| a construction `x in .T` | whether it constructs now or awaits definition, and which required fields are unfilled with where each came from — the same content as the unfilled-field diagnostic (§20.2) |
+| a trait type | its fields with kinds and types, its interfaces, its default type |
+| a TxAttribute on a TxComponent | the props-trait field it sets |
+| an imported function | its signature |
+
+### 20.8 Colouring ✅
+
+A TextMate grammar gives colour immediately, before the language server starts — including inside `tx-d` fences in markdown files, by grammar injection. Semantic tokens from the language server then refine it where only the parser knows the answer: a trait type versus a field, a declaration versus a definition.
+
+### 20.9 Parser architecture ❓
+
+TextMate alone is not sufficient: hover and completion need an error-tolerant concrete syntax tree, updated incrementally as the author types. What is fixed:
+
+- **One library.** The compiler is shared by the extension, the build and `tx check` (§21.1). The editor does not get a second parser.
+- **Two levels.** A *structural* level — lines, tab indentation, the first-match `: ` split, key heads, raw value spans, comments, the `:` record terminator — is context-free. A *type-directed* level — delimiters, tuple versus named construction, array flattening by rank, whether a value-body line is a key head (§22 #2) — needs the types in scope, so it lives in the semantic layer.
+- **Four languages meet.** Tx-md text with `%.` TxKeyRefs; TxData; `>>` bodies, which become JavaScript only after the acorn rewrite (§16.3), so JavaScript completion inside a body works on the rewritten source through a source map; and `.$$` values, which are Tx-md again.
+- **Regions are simple.** A `tx-d` fence, a `.txd` file and the fence in `_meta.md` all start at column 0, byte for byte, so one TxData entry point parses all three with only a line offset.
+
+Open: the parser technology — Tree-sitter, Lezer, or a hand-written incremental parser (§22 #39).
+
+### 20.10 Tooling order
+
+1. **Position-accurate diagnostics** — unavoidable; everything else is a shell over them.
+2. **`tx check <glob>`** — nearly free once 1 exists.
+3. **The VS Code extension** — TextMate grammar first, then a language server with diagnostics, hover and completion.
 
 An honest limit: roughly two-thirds of real typos are catchable. `.R.3` versus `.R:3` is not, because both are valid; nor is a comment describing the wrong type.
 
@@ -1140,9 +1252,9 @@ An honest limit: roughly two-thirds of real typos are catchable. `.R.3` versus `
 9. **TxKeyRef resolution** into TxDoc text and into component props.
 10. **Interfaces, unions, `as`.** Then TxGen's `ITxFolder` / `TxMeta` / `TxEntry`.
 11. **Validators and statics.**
-12. **`tx check`, then the TextMate grammar.**
+12. **`tx check`, then the VS Code extension** — TextMate grammar, then the language server with diagnostics, hover and completion (§20).
 
-The compiler is a **library**; the CLI is a thin wrapper. The VSCode extension, the Obsidian plugin and the Next.js build all need the same entry points.
+The compiler is a **library**; the CLI is a thin wrapper. The VS Code extension, the Next.js build and, later, the Obsidian plugin all need the same entry points.
 
 ### 21.2 What a minimum viable TxData is
 
@@ -1154,44 +1266,54 @@ Steps 1–5 plus 8 and 9. That gives typed props and page metadata — enough fo
 
 Numbered independently of the TxDoc register (Phase I §18).
 
-| # | Item | Status |
-|---|---|---|
-| 1 | Fence name `tx-d` vs `tx-data` | **open** — decide before code |
-| 2 | Key-head vs member-body discrimination for the `: ` splitter | **open** — try key-head shape first, else treat as content |
-| 3 | Trailing `//` comments, or whole-line only | **open** |
-| 4 | `%%` comments inside `.$` / `.$$` values | 🔮 deferred |
-| 5 | `#` (const field) vs `:#` (static constant) visual collision | **open** |
-| 6 | Interface "required of implementers" marker | **open** — no grammar for it |
-| 7 | Flatten declared *and* at inheritance (`Foo %<` + `add .Foo %<`) | **open** — redundant or error |
-| 8 | Variance: does `in .T` accept a descendant of `.T`? | **open** — `in` is "closed", which suggests invariance |
-| 9 | Parameter shadowing a member name | **open** — forbid or accept explicitly |
-| 10 | Array flattening with other required fields present | **open** — array last, or named form required |
-| 11 | Spread vs pass for nested arrays | **open** |
-| 12 | Union narrowing syntax (`is`?) and exhaustiveness | **open** — unions are unsafe without it |
-| 13 | Optional narrowing: does `.none` coerce in arithmetic, or error? | **open** — erroring is consistent |
-| 14 | `has()` all-of or any-of on OR sets | **open** |
-| 15 | Projection implicit or marked | **open** — implicit can swallow a wrong argument |
-| 16 | Interval expressions in type position | **open** — type-level evaluation appears nowhere else |
-| 17 | `.Q` codegen: operator rewriting and gcd normalisation | **open** — mitigate by widening `.Q` to `.R` on entry |
-| 18 | Integer overflow beyond `2^53` | surfaced only at `to.$`; not protection |
-| 19 | Mixed precision join (`.R:3` + `.R.2`) | **open** — lowest wins, rule needs stating |
-| 20 | Validators at compile time vs surviving to runtime | **open** — computed values break compile-only |
-| 21 | `to.X` namespace: reserved for type conversions or free | **open** |
-| 22 | Default type from first *assigned* vs first *declared* field | **open** — assignment order is fragile |
-| 23 | Hash-cons key: `(type, values)` or `(values)` | **open** |
-| 24 | `.Date` system type definition | **open** — flattened `.$` with a validator? |
-| 25 | Required field in a global head — blast radius | **open** — prefer "missing file means no wrapper" |
-| 26 | May a `.$$` value contain a TxComponent? | **open** |
-| 27 | Tx trait vs TypeScript props drift | **open** — generate one from the other? |
-| 28 | Function props across the SSG boundary | out of scope by decision |
-| 29 | `0^0` — JS gives 1; Tx guard must be emitted if it disagrees | **open** |
-| 30 | Generics beyond `.Type<I>` | 🔮 |
-| 31 | Function overloads | 🔮 — needs argument inference and tie-breaking |
-| 32 | Runtime `instanceOf`, reflection, `%reflection` flag | 🔮 |
-| 33 | Mutability | 🔮 TxCode |
-| 34 | ESM module traits | 🔮 |
-| 35 | Default types as trait types, not just primitives | 🔮 |
-| 36 | `BigInt`, `.C` complex numbers | 🔮 |
+Status legend: ✅ resolved · 🟡 partially resolved · 🟠 unresolved.
+
+| # | Item | Resolution | Status |
+|---|---|---|---|
+| 1 | Fence name `tx-d` vs `tx-data` | **`tx-d`** | ✅ |
+| 2 | Key-head vs member-body discrimination for the `: ` splitter | proposed: try key-head shape first, else treat as content; also fixes the editor's structural grammar (§20.9) | 🟡 |
+| 3 | Trailing `//` comments, or whole-line only | whole-line only is the safest reading | 🟠 |
+| 4 | `%%` comments inside `.$` / `.$$` values | 🔮 deferred | 🟠 |
+| 5 | `#` (const field) vs `:#` (static constant) visual collision | undecided | 🟠 |
+| 6 | Interface "required of implementers" marker | no grammar for it | 🟠 |
+| 7 | Flatten declared *and* at inheritance (`Foo %<` + `add .Foo %<`) | redundant or error | 🟠 |
+| 8 | Variance: does `in .T` accept a descendant of `.T`? | `in` is "closed", which suggests invariance | 🟠 |
+| 9 | Parameter shadowing a member name | forbid or accept explicitly | 🟠 |
+| 10 | Array flattening with other required fields present | rank does not settle the tuple case (§8.5); array last, or named form required | 🟠 |
+| 11 | Spread vs pass for nested arrays | settled by rank: an item of the element type is a member, an item of the array type is flattened (§8.5) | ✅ |
+| 12 | Union narrowing syntax (`is`?) and exhaustiveness | unions are unsafe without it | 🟠 |
+| 13 | Optional narrowing: does `.none` coerce in arithmetic, or error? | erroring is consistent | 🟡 |
+| 14 | `has()` all-of or any-of on OR sets | undecided | 🟠 |
+| 15 | Projection implicit or marked | implicit can swallow a wrong argument | 🟠 |
+| 16 | Interval expressions in type position | type-level evaluation appears nowhere else | 🟠 |
+| 17 | `.Q` codegen: operator rewriting and gcd normalisation | mitigate by widening `.Q` to `.R` on entry | 🟡 |
+| 18 | Integer overflow beyond `2^53` | surfaced only at `to.$`; accepted, not protection | 🟡 |
+| 19 | Mixed precision join (`.R:3` + `.R.2`) | lowest wins; exact rule needs stating | 🟡 |
+| 20 | Validators at compile time vs surviving to runtime | computed values break compile-only | 🟠 |
+| 21 | `to.X` namespace: reserved for type conversions or free | undecided | 🟠 |
+| 22 | Default type from first *assigned* vs first *declared* field | first *declared* is the safer rule | 🟡 |
+| 23 | Hash-cons key: `(type, values)` or `(values)` | undecided | 🟠 |
+| 24 | `.Date` system type definition | presumably a flattened `.$` with a validator | 🟡 |
+| 25 | Required field in a global head — blast radius | a missing `_meta.md` means no wrapper (TxGen §8.1) | ✅ |
+| 26 | May a `.$$` value contain a TxComponent? | undecided | 🟠 |
+| 27 | Tx trait vs TypeScript props drift | props are rewritten as a TxData trait; nothing checks it against the TypeScript interface | 🟠 |
+| 28 | Function props across the SSG boundary | out of scope by decision | ✅ |
+| 29 | `0^0` — JS gives 1; Tx guard must be emitted if it disagrees | undecided | 🟠 |
+| 30 | Generics beyond `.Type<I>` | 🔮 | 🟠 |
+| 31 | Function overloads | 🔮 — needs argument inference and tie-breaking | 🟠 |
+| 32 | Runtime `instanceOf`, reflection, `%reflection` flag | 🔮 | 🟠 |
+| 33 | Mutability | 🔮 TxCode | 🟠 |
+| 34 | ESM module traits | 🔮 | 🟠 |
+| 35 | Default types as trait types, not just primitives | 🔮 | 🟠 |
+| 36 | `BigInt`, `.C` complex numbers | 🔮 | 🟠 |
+| 37 | Imported JavaScript functions for `>>` bodies (§16.6) | explicit import, one project-wide set, run in the Worker; where the import declaration lives is not fixed; TypeScript "perhaps" | 🟡 |
+| 38 | Where TxComponent props traits live | in the TxDoc global head, or `.txd` files it imports (needs a `.txd` import mechanism); either way global (§3.3) | 🟠 |
+| 39 | Editor parser technology | Tree-sitter, Lezer, or hand-written incremental (§20.9); Lezer's CodeMirror advantage is no longer near-term with the Obsidian plugin deferred | 🟠 |
+| 40 | How the editor reads tag names from `TxConfig.ts` without executing component code | static read with the TypeScript compiler API, or a manifest written by `tx check` | 🟠 |
+| 41 | Mixing members and array references when filling a 1-D array | allowed (§8.5) | ✅ |
+| 42 | Spread operator | none (§8.6, TxDoc §15.4) | ✅ |
+| 43 | Completion triggers | only `.` and `%` at the start of a token (§20.4) | ✅ |
+| 44 | Global scope for completion and resolution | global head(s) plus every props trait; a name defined twice across global files is an error; depends on #38 | 🟡 |
 
 ---
 
@@ -1208,9 +1330,11 @@ Reasoning worth not relosing.
 7. **Compile at full construction, not instantiation.** A field's kind can change more than once during multi-stage composition, and a `>>` body's emitted JavaScript depends on it.
 8. **Interning is free correctness.** Immutability plus deterministic construction means reference equality *is* structural equality.
 9. **The Worker solves three problems with one mechanism** — determinism, non-termination, and sandboxing on Electron. Reach for it early rather than adding a setting.
-10. **Diagnostics are the product.** The editor extension is a shell over a parser that reports positions. Build the parser's error paths first; `tx check` and a TextMate grammar then cost almost nothing.
+10. **Diagnostics are the product.** The editor extension is a shell over a parser that reports positions. Build the parser's error paths first; `tx check`, colouring, hover and completion are then shells over the same library.
 11. **Numerical hygiene stays explicit.** `safeAdd` is called by the author, not injected by the compiler, so the compiler keeps one job and the emitted JavaScript stays readable.
 12. **`Number.EPSILON` is base-2.** `2 × EPSILON` scaled by decade is what matches 15 reliable decimal digits, and `toFixed` rounds the binary value rather than the decimal the author wrote.
+13. **Sigils make autocomplete cheap.** Every reference begins with `.` or `%`, and nothing in prose begins a word with either, so completion fires only on those keys at the start of a token. Declaration order then makes the candidate list exactly what is above — small, and already known.
+14. **Rank replaces spread.** Several arrays handed to a 1-D field can only mean *combine them*; one `%props:` reference can only mean *this is the props*. The use case is clear, so no operator is needed.
 
 ---
 
@@ -1329,10 +1453,10 @@ TxFolders in .Type<.ITxFolder>^{}:
 		This is the intro to my book.
 ```
 
-**Component props**
+**Component props** — the whole structure with `%props:` (named first-level TxAttributes are the alternative, TxDoc §15.4)
 
 ````
-.desmos: ...%.graph1-props
+.desmos: %props: %.graph1-props
 
 ```tx-d
 n: 42

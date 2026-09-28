@@ -4,6 +4,8 @@
 
 *Drafted 28 September 2026.* This document specifies TxGen, the third of four TxPhases. Nothing in it is implemented; every section is a target. §20 records what is open. TxCode (Phase IV) is a distant phase with no dependency on this one.
 
+**Revision 28 September 2026.** TxComponent security is deferred to a future public version (§13). The VS Code extension is the editor target and the Obsidian plugin a future version (§16). The open-items register gains a status column (§20).
+
 **Status markers**
 
 | Marker | Meaning |
@@ -12,6 +14,8 @@
 | ❌ | Designed, not built |
 | ❓ | Open — see §20 |
 | 🔮 | Deliberately deferred |
+
+In the §20 Status column: ✅ resolved · 🟡 partially resolved · 🟠 unresolved.
 
 ---
 
@@ -55,7 +59,7 @@ TxGen turns a folder tree of Tx-md documents into a static website: HTML files a
 
 1. **Deterministic output.** The same tree always produces the same site. A slug is a pure function of a file path.
 2. **No resolution pass for links.** Because slugs are computable without cross-file lookup, link rewriting needs only a cheap directory index, not a render of the target.
-3. **Obsidian is the authoring tool.** Everything TxGen asks of an author is something Obsidian already does well — rename a file, drag it in the sidebar, write a wikilink.
+3. **Obsidian is the authoring tool.** Everything TxGen asks of an author is something Obsidian already does well — rename a file, drag it in the sidebar, write a wikilink. Without a Tx plugin, dot-tags and `tx-d` fences simply show unprocessed there, which is acceptable; `tx-d` fences are edited in VS Code with the Tx extension (§16.1).
 4. **The host framework is a thin shell.** Next.js or Astro run the pipeline and write files. Everything island-related belongs to Tx and is identical across hosts.
 5. **Static output, no server.** The result is a folder of files. Whatever else the host site does is outside Tx.
 
@@ -606,7 +610,9 @@ Providers holding shared state (a query client, a store) take their instance fro
 
 ---
 
-## 13. Security
+## 13. Security 🔮
+
+**Deferred to a future public version.** For now the only TxComponents linked are the author's own, and the author is responsible for them. Security must be revisited before Tx is released for others' components; this section is kept for that time.
 
 ### 13.1 The browser side is fine ✅
 
@@ -649,7 +655,7 @@ Two practicalities: inline scripts need a nonce under a strict policy, so the bu
 |---|---|
 | a component module | any file in its `inputs` |
 | an image copy | the source image's hash |
-| a page | its `.md` source, its folder's `_meta.md`, the global `.txd`, `TxConfig.ts` |
+| a page | its `.md` source, its folder's `_meta.md`, the global `.txd` and any TxComponent props-trait `.txd`, `TxConfig.ts` |
 
 The last row is the awkward one: a change to the global head or to `TxConfig.ts` invalidates every page. Correct, and worth stating so a full rebuild is not mistaken for a bug.
 
@@ -680,19 +686,15 @@ tx watch <glob>          rebuild on change
 
 ## 16. Other Consumers
 
-### 16.1 VSCode — first ✅
+### 16.1 The VS Code extension — first ✅
 
-Diagnostics come from the parser, not the editor. In order of value per unit of work:
+The editor target is a VS Code extension giving colouring, autocomplete, and hover information over fields and trait types, for Tx-md text, `tx-d` fences and `.txd` files. These are first-class, not deferred. The design is TxData §20; the TxDoc contribution is TxDoc §16.5.
 
-1. **Position-accurate diagnostics** in the parser — unavoidable; everything else is a shell.
-2. **`tx check`** — nearly free once 1 exists.
-3. **A TextMate grammar** — a JSON file, no extension host code, gives colour inside `tx-d` fences. Structural typos become *visible*. Best effort-to-value ratio on the list.
-4. **Diagnostics in the Problems panel** — extension host calls the parser on save.
-5. **Autocomplete** — most work; defer.
+The working arrangement for now: author notes in Obsidian; edit `tx-d` fences in VS Code with the Tx extension; view the result by building the site or running it in dev.
 
-VSCode before Obsidian: diagnostics, document symbols and TextMate grammars are built in, where Obsidian needs each hand-rolled as CodeMirror decorations — plus no plugin review and no remote-code policy.
+### 16.2 Obsidian plugin — future version 🔮
 
-### 16.2 Obsidian plugin — later 🔮
+The least important piece of work; moved to a future version. Notes kept for then:
 
 **Reading mode** uses `registerMarkdownPostProcessor`, which fires **per section** — one top-level block. Obsidian's own renderer runs first and does not know Tx, so the postprocessor recovers raw source via `ctx.getSectionInfo(el)` and re-runs it through the pipeline.
 
@@ -760,10 +762,10 @@ Inherited from TxDoc's pass-through rule and TxData's `{line, col, message}` con
 6. **Folder walk with entries.** Post-order, ancestor context, `TxEntry` construction.
 7. **Folder wrappers.** `_meta.md`, `ITxFolder`, one wrapper component end to end.
 8. **The island build.** Manifest → esbuild → import map → client runtime, React only.
-9. **Error boundaries and CSP emission.**
+9. **Error boundaries.** (CSP emission is deferred with security, §13.)
 10. **Incremental rebuild and cleanup.**
 11. **`tx build` and `tx watch`.**
-12. Astro host; then the Obsidian plugin.
+12. Astro host. (The Obsidian plugin is a future version.)
 
 ### 19.2 Minimum viable site
 
@@ -777,35 +779,39 @@ Steps 6–8 add books, blogs and interactivity.
 
 Numbered independently of the TxDoc (Phase I §18) and TxData (Phase II §22) registers.
 
-| # | Item | Status |
-|---|---|---|
-| 1 | Slug collision when part numbers are omitted from filenames | **open** — `01-01 Subject A` and `02-01 Subject A` both strip to the same name if prefixes were dropped; detection required regardless |
-| 2 | Is a part a URL segment? | **open** — `/my-book/part-1/subject-a` is self-documenting; `/my-book/01-01-subject-a` is shorter |
-| 3 | Prefix stripping false positive (`1984 Orwell Review`) | **open** — accept and document, require a separator, or warn at 4+ digits |
-| 4 | Renumbering changes URLs | accepted consequence; Obsidian fixes internal links, external bookmarks break |
-| 5 | Trailing-slash setting | either works; absolute image URLs make it irrelevant to assets |
-| 6 | `_intro.md` versus `index.md` for folder content | resolved — `_meta.md`'s `.content` field |
-| 7 | Do folders generate routes? | yes — a second `generateStaticParams` code path |
-| 8 | Book wrapper: shell versus single concatenated page | **open** — shell is simpler and matches per-chapter slugs |
-| 9 | `_meta.md` inheritance into subfolders | **open** — per-folder with no inheritance is the norm |
-| 10 | Dynamic image references invisible to the scanner | mitigated by an unreferenced-file warning |
-| 11 | Case-only filename collisions | warn; lowercase keys, original in value |
-| 12 | Heading anchors and table of contents | ❌ not built — needed for `[[Note#Heading]]` |
-| 13 | `==highlight==` versus `.hl{}` — two syntaxes, one output | **open** — decide deliberately |
-| 14 | `%20` (spaces) in URLs as an option | drop it; hyphens only |
-| 15 | Shared-data deduplication across islands on one page | **open** — page-level JSON block by key |
-| 16 | `.$$` values containing TxComponents | **open** — allowed, or prose only |
-| 17 | `_meta.md` islands attach to the folder route | stated; needs implementing |
-| 18 | YAML frontmatter compatibility | 🔮 |
-| 19 | `esbuild-wasm` or Sucrase for on-device Obsidian builds | 🔮 — must be bundled, not fetched |
-| 20 | Sandboxed iframe for Obsidian islands | 🔮 — the only arrangement where a stranger's component is safe |
-| 21 | Build-time render inside the Worker sandbox | **open** — same mechanism as TxData `>>` bodies |
-| 22 | Per-route CSP configuration | **open** — needs a config surface |
-| 23 | Global `.txd` / `TxConfig.ts` change invalidates every page | correct; document so a full rebuild is not read as a bug |
-| 24 | Where TxGen settings live — `TxGen.ts` or a `TxGen.txd` | **open** |
-| 25 | Vue / Svelte / Solid island adapters | 🔮 — React only for now |
-| 26 | Search index generation | 🔮 — not yet considered |
-| 27 | RSS / sitemap generation | 🔮 |
+Status legend: ✅ resolved · 🟡 partially resolved · 🟠 unresolved.
+
+| # | Item | Resolution | Status |
+|---|---|---|---|
+| 1 | Slug collision when part numbers are omitted from filenames | `01-01 Subject A` and `02-01 Subject A` both strip to the same name if prefixes were dropped; detection required regardless | 🟠 |
+| 2 | Is a part a URL segment? | `/my-book/part-1/subject-a` is self-documenting; `/my-book/01-01-subject-a` is shorter | 🟠 |
+| 3 | Prefix stripping false positive (`1984 Orwell Review`) | accept and document, require a separator, or warn at 4+ digits; warning is the low-cost answer (§4.6) | 🟡 |
+| 4 | Renumbering changes URLs | accepted consequence; Obsidian fixes internal links, external bookmarks break | ✅ |
+| 5 | Trailing-slash setting | either works; absolute image URLs make it irrelevant to assets | ✅ |
+| 6 | `_intro.md` versus `index.md` for folder content | `_meta.md`'s `.content` field | ✅ |
+| 7 | Do folders generate routes? | yes — a second `generateStaticParams` code path | ✅ |
+| 8 | Book wrapper: shell versus single concatenated page | shell is simpler and matches per-chapter slugs; needs confirming | 🟡 |
+| 9 | `_meta.md` inheritance into subfolders | per-folder with no inheritance is the norm; needs confirming | 🟡 |
+| 10 | Dynamic image references invisible to the scanner | mitigated by an unreferenced-file warning | ✅ |
+| 11 | Case-only filename collisions | warn; lowercase keys, original in value | ✅ |
+| 12 | Heading anchors and table of contents | ❌ not built, not yet designed — needed for `[[Note#Heading]]` | 🟠 |
+| 13 | `==highlight==` versus `.hl{}` — two syntaxes, one output | decide deliberately | 🟠 |
+| 14 | `%20` (spaces) in URLs as an option | dropped; hyphens only | ✅ |
+| 15 | Shared-data deduplication across islands on one page | page-level JSON block by key | 🟠 |
+| 16 | `.$$` values containing TxComponents | allowed, or prose only (TxData §22 #26) | 🟠 |
+| 17 | `_meta.md` islands attach to the folder route | stated; needs implementing | ✅ |
+| 18 | YAML frontmatter compatibility | 🔮 | 🟠 |
+| 19 | `esbuild-wasm` or Sucrase for on-device Obsidian builds | 🔮 with the Obsidian plugin — must be bundled, not fetched | 🟠 |
+| 20 | Sandboxed iframe for Obsidian islands | 🔮 with the Obsidian plugin — the only arrangement where a stranger's component is safe | 🟠 |
+| 21 | Build-time render inside the Worker sandbox | 🔮 deferred with security (#28) — same mechanism as TxData `>>` bodies | 🟠 |
+| 22 | Per-route CSP configuration | 🔮 deferred with security (#28) — needs a config surface | 🟠 |
+| 23 | Global `.txd` / `TxConfig.ts` change invalidates every page | correct; document so a full rebuild is not read as a bug | ✅ |
+| 24 | Where TxGen settings live — `TxGen.ts` or a `TxGen.txd` | undecided | 🟠 |
+| 25 | Vue / Svelte / Solid island adapters | 🔮 — React only for now | 🟠 |
+| 26 | Search index generation | 🔮 — not yet considered | 🟠 |
+| 27 | RSS / sitemap generation | 🔮 | 🟠 |
+| 28 | TxComponent security (§13) | 🔮 deferred to a future public version; only the author's own components are linked for now | 🟠 |
+| 29 | Editor target | VS Code extension with colouring, autocomplete and hover; Obsidian plugin a future version (§16) | ✅ |
 
 ---
 

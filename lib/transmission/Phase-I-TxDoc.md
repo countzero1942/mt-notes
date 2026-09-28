@@ -2,7 +2,9 @@
 
 **Transmission (Tx) — the Tx-markdown extension for `unified.js` pipelines**
 
-*Revised 27 September 2026.* This document describes the target design of TxDoc and, where the implementation in `lib/transmission/` differs, says so. It is one of four TxPhase documents. §16 bridges to TxData and TxGen, which are written next.
+*Revised 28 September 2026.* This document describes the target design of TxDoc and, where the implementation in `lib/transmission/` differs, says so. It is one of four TxPhase documents. §16 bridges to TxData and TxGen.
+
+**Revision 28 September 2026.** TxAttributes on every TxElement, after its content, never in a Body Area (§6, §12). No spread operator; TxComponent props supplied either by named first-level TxAttributes or whole by `%props:` (§15.4). The fence name `tx-d` is settled. The VS Code extension — colouring, autocomplete, hover — is the editor target; the Obsidian plugin moves to a future version (§16.5, §16.6). TxComponent security is deferred (§15.8). Open-items registers gain a status column (§18).
 
 **Status markers**
 
@@ -12,6 +14,16 @@
 | ⚠️ | Implemented, but diverges from the target — listed in §17 |
 | ❌ | Designed, not built |
 | ❓ | Open — see §18 |
+
+**Open-item status** — the Status column of every open-items register (§18 here; TxData §22; TxGen §20):
+
+| Status | Meaning |
+|---|---|
+| ✅ | Resolved |
+| 🟡 | Partially resolved — decided in principle, may need refinement |
+| 🟠 | Unresolved |
+
+Orange rather than red, because ❌ already means *not built*. Resolved items stay in the register as a record of the decision.
 
 ---
 
@@ -61,17 +73,18 @@ TxDoc, TxData and TxGen together are what a working SSG documentation site needs
 | Term | Meaning |
 |---|---|
 | **dot-tag** | The *form* of a Tx tag: a name beginning with a period — `.hl`, `.h2`, `.grid`. Shape, not function. |
+| **TxElement** | Any of the three dot-tag constructs: TxInline, TxHeading, TxBlock. |
 | **TxInline** | `.tag{Inner Content}` |
 | **TxHeading** | `.tag Heading Content` |
 | **TxBlock** | `.tag: Heading Area` with an indented Body Area, or `.tag` alone (void). |
 | **TxVariant** | A second dot on a tag — `.hl.gld{…}`. Carries **appearance**. |
-| **TxAttribute** | A `%`-prefixed key/value pair on a TxBlock. Carries **structure and parameters**. |
+| **TxAttribute** | A `%`-prefixed key/value pair on a TxElement, placed after its content. Carries **structure and parameters**. Never in a Body Area. |
 | **TxComponent** | A TxBlock mapped in `TxConfig.ts` to a UI component, rendered at build and hydrated in the browser. |
 | **TxConfig** | The user-owned `TxConfig.ts`. There are no system dot-tags; everything is configurable. |
 | **Inner Content** | Between a TxInline's braces. |
 | **Heading Content** | After a TxHeading's dot-tag; or the text part of a TxBlock's Heading Area. |
-| **Heading Area** | A TxBlock's first line after `.tag:`. Heading Content then Heading TxAttributes. |
-| **Body Area** | A TxBlock's indented lines. Body TxAttributes first, then Body Content. |
+| **Heading Area** | A TxBlock's first line after `.tag:`. Heading Content then TxAttributes. |
+| **Body Area** | A TxBlock's indented lines. Body Content only — no TxAttributes. |
 | **Tx-md pipeline** | remark-parse → remark-transmission → remark-rehype → rehype-transmission → stringify. All three Content kinds go through it. |
 | **TxToken** | The lexical unit `%name`. Resolution decides whether it is a TxAttribute, a TxSetting or a TxKeyRef. |
 
@@ -133,9 +146,9 @@ More text
 
 **A void TxBlock must be alone in its paragraph** — blank line after, or end of document. Otherwise markdown's lazy continuation merges the following prose into the same paragraph and the block would have to split a node. Text on the next line is therefore *not* a void block; the whole paragraph passes through as text.
 
-**Lookup order for a bare `.name` line:** the heading table first, then the block table. A tag registered in both is unreachable in one, so `mergeTxConfig()` must error on a duplicate at config load. If the heading lookup fails and the block lookup succeeds but the line carries attributes (`.counter Some text %a: 3`), those attributes are invalid — a clean diagnostic rather than a silent misparse.
+**Lookup order for a bare `.name` line:** the heading table first, then the block table. A tag registered in both is unreachable in one, so `mergeTxConfig()` must error on a duplicate at config load. If the heading lookup fails and the block lookup succeeds but the line carries text or attributes (`.counter Some text %a: 3`), it is neither a TxHeading nor a void TxBlock — a clean diagnostic rather than a silent misparse. The fix is the colon: `.counter: %a: 3`.
 
-**A void block with an indented body** (`.counter` then `%start: 20`) is a forgotten colon. Markdown turns the indented lines into a code block, so the author sees their attributes rendered as code. Emit a build warning.
+**A void block with an indented body** (`.co` then indented lines) is a forgotten colon. Markdown turns the indented lines into a code block, so the author sees their content rendered as code. Emit a build warning.
 
 **Naming.** Target: names may use `[\w-]+` — letters, digits, underscore, hyphen. Lowercase is the documented default; case is preserved and matching is case-sensitive. ⚠️ Current regex is `\w+` (no hyphen).
 
@@ -143,22 +156,24 @@ More text
 
 ## 5. Syntax Specification
 
-### 5.1 TxInline ✅
+### 5.1 TxInline ✅ / attributes ❌
 
 ```
 .tag{Inner Content}
 .tag.variant{Inner Content}
+.tag{Inner Content %attr: value %flag}
 ```
 
-Inner Content goes through the Tx-md pipeline; markdown and nested TxInlines to any depth. Braces match by depth. `\{`, `\}`, `\\` are literals. No whitespace between the dot-tag and `{`. `.b{}` collapses to nothing. Markdown may wrap a TxInline, and the scanner descends into `strong`, `emphasis`, `delete` (configurable via `scannableMdNodes`). Braces spanning a newline keep it verbatim; that is not poetic text.
+TxAttributes, if any, follow the Inner Content inside the braces (§12). Inner Content goes through the Tx-md pipeline; markdown and nested TxInlines to any depth. Braces match by depth. `\{`, `\}`, `\\` are literals. No whitespace between the dot-tag and `{`. `.b{}` collapses to nothing. Markdown may wrap a TxInline, and the scanner descends into `strong`, `emphasis`, `delete` (configurable via `scannableMdNodes`). Braces spanning a newline keep it verbatim; that is not poetic text.
 
-### 5.2 TxHeading ✅
+### 5.2 TxHeading ✅ / attributes ❌
 
 ```
 .tag Heading Content
+.tag Heading Content %attr: value %flag
 ```
 
-Everything after the first space is Heading Content, through the pipeline. `.h3` alone is text. TxHeadings take no TxAttributes.
+Everything after the first space is Heading Content, through the pipeline, up to the first TxAttribute. `.h3` alone is text. TxAttributes, if any, follow the Heading Content (§12).
 
 ### 5.3 TxBlock ✅ structure
 
@@ -168,8 +183,8 @@ Everything after the first space is Heading Content, through the pipeline. `.h3`
 	Body Area line
 ```
 
-- **Heading Area** (optional): Heading Content, then Heading TxAttributes.
-- **Body Area**: lines indented by at least one tab. Body TxAttributes first, then Body Content.
+- **Heading Area** (optional): Heading Content, then TxAttributes.
+- **Body Area**: lines indented by at least one tab. Body Content only. A body line beginning with `%` is content, not a TxAttribute (the TxToken scan still applies to it).
 - **Indentation is tab-only.** One tab per level. Leading spaces are content.
 - The Body Area ends at the first non-blank line with less indentation than the first Body line.
 - `headingTarget` (§10.4) decides where Heading Content goes.
@@ -187,12 +202,12 @@ The `:` spacer matters more than it looks. A blank line ends a paragraph, and Ob
 ### 5.5 Grammar summary
 
 ```
-tx_inline    := '.' name ('.' variant)? '{' inner '}'
-tx_heading   := '.' name ('.' variant)? ' ' heading_content
+tx_inline    := '.' name ('.' variant)? '{' inner (' ' tx_attribute)* '}'
+tx_heading   := '.' name ('.' variant)? ' ' heading_content (' ' tx_attribute)*
 tx_block     := '.' name ('.' variant)? ':' heading_area? NEWLINE body_area
 tx_void      := '.' name ('.' variant)? WS* (NEWLINE NEWLINE | EOF)
 heading_area := heading_content? (' ' tx_attribute)*
-body_area    := (TAB body_attribute NEWLINE)* (TAB body_line NEWLINE)+
+body_area    := (TAB body_line NEWLINE)+
 body_line    := TAB* content | ':' | ''
 tx_attribute := '%' key | '%' key ': ' value
 ```
@@ -205,12 +220,14 @@ One lexical form, three resolutions. Position and prefix decide which.
 
 | Sigil | Name | Where | Meaning |
 |---|---|---|---|
-| `%name` | **TxAttribute** | Heading Area after Heading Content; Body Area before Body Content; inside TxInline braces after Inner Content | a parameter to the dot-tag |
-| `%name` | **TxSetting** | anywhere in text inside a scoping block | running state read in document order (list markers, §14) |
+| `%name` | **TxAttribute** | after a TxElement's content: inside TxInline braces after Inner Content; after TxHeading Heading Content; in a TxBlock Heading Area after Heading Content. **Never in a Body Area.** | a parameter to the dot-tag |
+| `%name` | **TxSetting** | anywhere in text inside a scoping block (placement open — §18 #43) | running state read in document order (list markers, §14) |
 | `%.name` | **TxKeyRef** | anywhere in text | substitution of a TxData value (§16) |
 | `%%` | comment | anywhere outside a fence | §7 |
 
 Inside a `tx-d` fence, references use a bare `.` prefix instead of `%.` — there are too many of them for the longer form to be readable, and the fence gives unambiguous context.
+
+**Why prefixes make the editor easy.** A dot-tag, a TxData reference and a TxAttribute each begin with a sigil that never starts a word in prose: nothing in normal text begins with `.` or `%`. So autocomplete fires only on `.` or `%` at the start of a token — after whitespace, line start, or an opening bracket — rather than on every keystroke as in languages whose names are bare words. See TxData §20.
 
 **Why `%.` and not `%`.** In the Heading Area both attributes and value references appear on one line:
 
@@ -420,25 +437,20 @@ Markdown collapses single newlines and strips leading whitespace. TxDoc keeps bo
 
 ### 12.1 Syntax
 
-Two placements, never both for the same block:
+One placement: **after the TxElement's content, on the same line.** ✅ decided / ❌ not built for TxInline and TxHeading.
 
 ```
+.tag{Inner Content %attr: value}
+.tag Heading Content %attr: value %flag
 .my-block: Heading Content %attr: value %flag %list: abc :: def
-	Body Content
-
-.my-block: Heading Content
-	%attr: value
-	%flag
-	%list:
-		abc
-		def
 	Body Content
 ```
 
 - `%` opens a key. ` %` (with a preceding space) separates one attribute from the next.
 - Strings are never quoted. A flag has the value `true`.
 - **Array separator is ` :: `** (spaced double colon). `|` is the OR operator; `^` is XOR. ⚠️ Current code splits on `|`.
-- If any TxAttributes appear in the Heading Area, Body Area attributes are ignored.
+- **Never in a Body Area.** A Body Area holds Body Content only. A body line beginning with `%` is content. ⚠️ Current code parses Body attributes (D5).
+- **Explicit only.** Every TxAttribute is written by the author. Nothing is inherited, implied or carried along.
 
 ### 12.2 Where they go
 
@@ -448,9 +460,47 @@ Two placements, never both for the same block:
 | `html` | ⚠️ currently spread as raw HTML attributes; to be constrained |
 | `component` | props (§15) |
 
-### 12.3 Phase I values are untyped
+### 12.3 Values
 
-Every value is a string, `true`, or an array of strings. Typing arrives with TxData.
+A value is a literal, a TxKeyRef (`%settings: %.my-settings`), or a bracketed construction (§6). In Phase I every literal is a string, `true`, or an array of strings. For a TxComponent the props trait types each first-level attribute (§15.4), so a literal is parsed against its field's type — the only typing a TxAttribute ever receives.
+
+### 12.4 No attribute trees ✅
+
+TxAttributes are one line and flat. Anything nested or long goes in a `tx-d` fence and arrives by reference. The Body-Area attribute tree this rules out:
+
+```
+.desmos:
+	%settings:
+		%height: 500px
+		%width: 400px
+	%expressions in %.DesmosExpr[]:
+		%id: line1
+		%latex: y = x^2
+		:
+		%id: line2
+		%latex: y = 2x
+```
+
+would be a second typed-data grammar living inside Tx-md text — a second parser, a second set of diagnostics, a second set of editor rules. The same data in a fence:
+
+````
+.desmos: %props: %.desmos-props1
+
+```tx-d
+desmos-props1 in .DesmosProps:
+	.settings:
+		.height: 500px
+		.width: 400px
+	.expressions:
+		.id: line1
+		.latex: y = x^2
+		:
+		.id: line2
+		.latex: y = 2x
+```
+````
+
+There is then one place typed data is parsed. The attributes a TxElement actually needs are few, so the one-line limit costs little; the trade is recorded as §18 #42 in case a case turns up that it serves badly.
 
 ---
 
@@ -630,42 +680,74 @@ block: {
 			export: "default",
 			ui: "react",                          // renamed from `framework` ⚠️
 			hydrate: "visible",                   // "load" | "idle" | "visible" | "none"
-			headingProp: "title",                 // Heading Content → this prop  ❌
-			contentProp: "expressions",           // Body Content → this prop
+			headingProp: "title",                 // optional: Heading Content → this prop  ❌
+			contentProp: "expressions",           // optional: Body Content → this prop
 			providers: [ … ],                     // ❌ see 15.7
-			propType: "@/components/desmos.txd",  // ❌ the Tx trait for props
+			propType: "@/components/desmos.txd",  // ❌ the TxData props trait (location open, §18 #47)
 		},
 	},
 },
 ```
 
-### 15.4 The five prop-supply forms
+`TxConfig.ts` holds only a **reference** to the component — its `.tsx` source or a built `.js` module (❓ not yet fixed). The component itself is TypeScript and lies entirely outside the Tx domain. The only thing Tx knows about it is its props, rewritten as a TxData trait.
+
+### 15.4 Supplying props ✅ decided / ❌ not built
+
+A React component's props are one data structure, but its **first-level properties** play the role attributes play on an HTML element: each is set by name. (They are never emitted as HTML attributes — non-standard attributes are invalid HTML and browsers warn about them.) Tx mirrors this: **first-level props are TxAttributes.**
+
+Two forms, mutually exclusive:
 
 ```
-.counter                                            void — defaults only
+.desmos: %settings: %.my-settings %expressions: %.my-expressions      named first-level props
 
-.counter: My counter                                Heading Content → headingProp
-
-.counter: %start: 10 %inc: 5                        Heading-Area attributes
-
-.counter:                                           Body-Area attributes
-	%start: 10
-	%inc: 5
-
-.desmos: ...%.graph1-props                          spread from TxData
+.desmos: %props: %.my-props                                           the whole props structure
 ```
 
-Plus Body Content → `contentProp` (consumed as that prop, and *not* also rendered as children).
+- **Named.** Each first-level prop is a TxAttribute set to a literal or a TxKeyRef. Only the props written are set; the component's own defaults supply the rest.
+- **Whole.** `%props:` takes one TxKeyRef to a value of the component's props trait, and that value *is* the props object — nothing is merged into it. `%props` is a reserved TxAttribute name on `component` blocks, chosen because `props` is what React code already calls the whole structure.
+- **Never both.** `%props` alongside any other TxAttribute is an error.
+- **Void.** `.counter`, with no colon, sets nothing; the component's defaults apply.
 
-**Merge precedence**, lowest to highest:
+````
+Some text
 
+.desmos: %settings: %.my-settings %expressions: %.my-expressions
+
+```tx-d
+my-settings in .DesmosSettings:
+	...
+my-expressions in .DesmosExpressions:
+	...
 ```
-headingProp  →  Heading-Area attributes  →  tx-d data  →  contentProp
+````
+
+````
+Some text
+
+.desmos: %props: %.my-props
+
+```tx-d
+my-props in .DesmosProps:
+	.settings:
+		...
+	.expressions:
+		...
 ```
+````
 
-Data beating Heading attributes follows the existing Body-overrides-Heading rule, so it is consistent rather than a new invention.
+The second is the simple way to hand a large settings tree to a component.
 
-Complex props belong in a `tx-d` fence and arrive by reference. One-line attribute forms cannot nest (§6), by design — everything complex can be done in a data block, and data blocks are page-scoped so they can live at the end of the document.
+**No spread operator.** There is no `...` anywhere in Tx. One `%props:` reference is the whole props object, so the intent is plain without one. The job a spread usually does — shared defaults with per-use overrides — is multi-stage construction in TxData (TxData §8.6). The same easy-going rule replaces spread for 1-D arrays (TxData §8.5).
+
+**Heading Content and Body Content.** When the ComponentSpec declares `headingProp` or `contentProp`, Heading Content or Body Content goes to that prop through the Tx-md pipeline (and is not also rendered as children). A component that declares neither ignores any content given to it — the author knows what a component takes. How content props combine with `%props:` is open (§18 #46).
+
+**Props are typed in TxData.** The component's TypeScript props interface is rewritten as a TxData trait (`.DesmosProps`) named by `propType`. That trait types each named attribute, types the `%props:` value, and drives editor autocomplete and hover — `%` in a component's Heading Area offers the trait's first-level fields (TxData §20). Where props traits live is open (§18 #47).
+
+**Reserved names.** `key`, `ref`, and `children` (unless it is the `contentProp`) belong to React and cannot be TxAttributes.
+
+**Complex props belong in a `tx-d` fence** and arrive by reference. TxAttributes are one line and flat (§12.4). `tx-d` fences are page-scoped, so they can sit anywhere in the document, including at the end.
+
+**What the component receives** is plain JavaScript data or JSON with every TxData type erased (TxData §17). The component sees no Tx machinery.
 
 ### 15.5 Current output — the placeholder seam ✅
 
@@ -759,7 +841,9 @@ Three tiers: the component wraps itself (simplest, most portable, start here); d
 
 Mantine specifically: v7+ **does** need `MantineProvider` even with no theme, because the provider is what emits `--mantine-*`. Its modals and popovers portal to `document.body` by default; `withinPortal={false}` or a `portalProps.target` keeps them inside the island.
 
-### 15.8 Security
+### 15.8 Security 🔮
+
+**Deferred to a future public version.** For now the only TxComponents linked are the author's own, and the author is responsible for them. Security must be revisited before Tx is released for others' components; what follows is kept for that time.
 
 **In the browser**, an island has exactly the powers any web page has — no filesystem, no Node, no server. A static site has no server process at all.
 
@@ -785,9 +869,9 @@ Mantine specifically: v7+ **does** need `MantineProvider` even with no theme, be
 ### 15.10 Order of work
 
 1. Manifest + esbuild pass + client runtime, React only, Body Content via `contentProp`.
-2. `headingProp` and Heading-Area attributes.
-3. `tx-d` props (needs TxData).
-4. Error boundaries, CSP emission.
+2. `headingProp` and named first-level TxAttributes.
+3. `tx-d` props by reference, named and whole (`%props:`) (needs TxData).
+4. Error boundaries. (CSP emission is deferred with §15.8.)
 5. Other UI frameworks.
 
 ---
@@ -882,21 +966,24 @@ TxEntry:
 
 **CLI.** `tx check` (parse, typecheck, print diagnostics), `tx data --out json`, `tx build`, `tx watch`. The compiler is a library; the CLI is a thin wrapper, because the VSCode extension, the Obsidian plugin and the Next.js build all need the same entry points.
 
-### 16.5 Tooling order
+### 16.5 Editor tooling: the VS Code extension
 
-Diagnostics come from the parser, not the editor. In order of value per unit of work:
+**The editor target is a VS Code extension giving colouring, autocomplete, and hover information over fields and trait types.** These are first-class, not deferred. The full design — trigger rules, completion contexts, hover content, parser layers — is in TxData §20, because nearly all of it concerns typed data.
 
-1. **Position-accurate diagnostics** — every parse and resolve step returns `{line, col, message}` rather than throwing. Unavoidable work; everything else is a shell over it.
-2. **`tx check`** — nearly free once 1 exists, and catches most mistakes.
-3. **A TextMate grammar** — a JSON file, no extension host code, gives colour inside `tx-d` fences. Structural typos become *visible*. Best effort-to-value ratio on the list.
-4. **Diagnostics in VSCode** — extension host calls the parser on save.
-5. **Autocomplete** — most work, least immediate value. Defer.
+What TxDoc contributes to the extension:
 
-VSCode before Obsidian: it has diagnostics, document symbols and TextMate grammars built in, where Obsidian requires hand-rolling each as CodeMirror decorations, and there is no plugin review or remote-code policy to satisfy.
+- **Dot-tag names** for `.` completion in Tx-md text, from the `TxConfig.ts` tag tables: at line start, TxHeading and TxBlock tags; mid-line, TxInline tags.
+- **TxAttribute names** for `%` completion after a TxElement's content — for a TxComponent, the first-level fields of its props trait (§15.4).
+- **TxSetting names** (list markers, §14.2) for `%` completion on list item lines.
+- **Fence claiming and the TxToken scanner**, so the extension knows which regions are Tx-md text, which are `tx-d`, and where each `%.` reference sits.
+
+Diagnostics still come from the parser, not the editor: every parse and resolve step returns `{line, col, message}` rather than throwing, and `tx check` is a command-line shell over the same library.
 
 Using **acorn** for the `>>` rewriter (which is needed anyway for `.name` → `name()` and member chains) gives JavaScript syntax errors free.
 
-### 16.6 Obsidian plugin (later phase)
+### 16.6 Obsidian plugin (future version) 🔮
+
+**Obsidian remains the authoring tool** for the vault — notes, wikilinks, Dewey-prefix renames. Without a plugin, dot-tags and `tx-d` fences simply show unprocessed in Obsidian, which is acceptable. `tx-d` fences are edited in VS Code with the Tx extension, and the rendered result is viewed by building the site or running it in dev. The plugin is the least important piece of work and moves to a future version. Notes kept for then:
 
 Reading mode uses `registerMarkdownPostProcessor`, which fires **per section** — one top-level block. Obsidian's own renderer runs first and does not know Tx, so the postprocessor must recover raw source via `ctx.getSectionInfo(el)` and re-run it. Obsidian renders sections lazily and *unrenders* them when scrolled far away, so islands mount and unmount; keep a `Map<HTMLElement, Root>` and `unmount()` on teardown.
 
@@ -922,7 +1009,7 @@ TxInline (full), TxHeading (full), TxBlock structure and Body extraction, tab-on
 | D2 | Variant codes are single letters | three-letter codes (`gld`, `red`, `blu`…) |
 | D3 | Names matched by `\w+` — no hyphen | widen to `[\w-]+` |
 | D4 | Attribute arrays split on `\|` | switch to ` :: ` |
-| D5 | Body attributes override Heading | Heading wins; Body ignored |
+| D5 | Body Area TxAttributes are parsed, and override Heading | remove — TxAttributes come only after content; a Body Area is Body Content only (§12) |
 | D6 | `attributes` schema coerces `number` | drop for Phase I, or mark as the TxData hook |
 | D7 | `html` strategy spreads attributes as raw HTML attributes | constrain |
 | D8 | Poetic classes ignore `classPrefix` | apply, or document `tx-` as fixed |
@@ -951,11 +1038,11 @@ TxInline (full), TxHeading (full), TxBlock structure and Body extraction, tab-on
 | `.h3` with no content | `<p>.h3</p>` |
 | `.b {x}`, `. b{x}`, `.b.var.extra{x}` | text |
 
-Target additions: `.tag:` with no value → text; attributes in both areas → Body ignored; void block with an indented body → warning; `.grid` with no body → error.
+Target additions: `.tag:` with no value → text; a `%` line in a Body Area → content, not an attribute; `%props` with any other TxAttribute → error; void block with an indented body → warning; `.grid` with no body → error.
 
 ### 17.5 Not built ❌
 
-Phase 0 (comments, fence claiming), the TxToken scanner, `bodyMode: "blocks"`, grid, implicit lists, the island build (manifest, esbuild pass, runtime), `headingProp`, error boundaries, CSP emission, TxBlock/attribute/component test files, all of TxGen.
+Phase 0 (comments, fence claiming), the TxToken scanner, `bodyMode: "blocks"`, grid, implicit lists, the island build (manifest, esbuild pass, runtime), `headingProp`, TxAttributes on TxHeadings and inside TxInline braces, `%props:`, error boundaries, CSP emission (🔮), TxBlock/attribute/component test files, the VS Code extension, all of TxGen.
 
 ### 17.6 Ordered to-do
 
@@ -966,56 +1053,70 @@ Phase 0 (comments, fence claiming), the TxToken scanner, `bodyMode: "blocks"`, g
 5. `bodyMode: "blocks"` + the recursive body parser; fix S4.
 6. Grid; then implicit lists.
 7. Island build: manifest → esbuild → runtime, React only, `contentProp` only.
-8. D3, D4, D5, D10 (attributes) against the first real prop use case.
-9. Diagnostics, then `tx check`, then the TextMate grammar.
+8. D3, D4, D5, D10 (attributes), TxAttributes after content on every TxElement, and `%props:` — against the first real prop use case.
+9. Diagnostics, then `tx check`, then the VS Code extension: TextMate grammar, then a language server with diagnostics, hover and completion (TxData §20).
 
 ---
 
 ## 18. Open Items Register
 
-| # | Item | Status |
-|---|---|---|
-| 1 | Indent skip (0 → 2) | treat as minimum next indent |
-| 2 | List flag with no children | sets the running variable, no warning |
-| 3 | `%.` prefix vs TxData key collision | retired by `%.` and hyphenated flags |
-| 4 | `%%` escaping | structural — backticks protected by node type |
-| 5 | Mid-line TxToken | allowed; needs the end-of-line lookahead relaxed |
-| 6 | Multiple variants (`.cell.2x2.center:`) | **open** — single variant only today |
-| 7 | Blank line inside a block body | ends it; `:` is the spacer; matters doubly in Obsidian |
-| 8 | Nested dot-tag in a body | **broken** (S4) — fix with `bodyMode: "blocks"` |
-| 9 | Unknown flag | falls through as attribute |
-| 10 | `%20`-style URL collision | retired by `%.` |
-| 11 | List root-frame seed | dot-tag seeds; Heading flag overrides |
-| 12 | `.ul:` + `%ol-I` contradiction | **open** — flag wins, or warn |
-| 13 | `.R:5` vs assignment colon | resolved by `: ` requiring a following space |
-| 14 | `<`/`>` suffix operators vs inline HTML | safe unless a letter follows `<` |
-| 15 | Line preservation when stripping | replace with `indent + :` |
-| 16 | `_meta.md` scope resolution | by line-range containment |
-| 17 | TxKeyRef cycles | retired by declaration order |
-| 18 | Attribute value must admit `%.` | **open** (D10) |
-| 19 | Attribute scanner brace/paren depth | already depth-aware; nesting kept |
-| 20 | `.$` / `.$$` substitution rules | `.$` substitutes keyrefs only; `.$$` also runs dot-tags |
-| 21 | Member shadowing a page-level key | warn |
-| 22 | `.tag:`-with-nothing asymmetry | retired — void blocks drop the colon |
-| 23 | Comma grouping vs array delimiter | use `_` (`9_007_199_254_740_991`) |
-| 24 | Unterminated `%%` | comments to end of document; warn |
-| 25 | `#` vs `:#` constant markers | **open** |
-| 26 | Validators at compile vs runtime | compile-time via closure rules; computed values **open** |
-| 27 | Interval expressions in type position | **open** |
-| 28 | Nested TxComponents inside `.grid` cells | **open** — allowed once `bodyMode: "blocks"` lands; what `contentProp` then carries is undecided |
-| 29 | `render: "csr"` as a spec field vs `hydrate: "none"` | **open** |
-| 30 | Shared-data deduplication across islands | **open** — a page-level JSON block referenced by key |
-| 31 | No-JS fallback via Body Content | **open** |
-| 32 | Tx trait vs TypeScript props drift | **open** — generate one from the other? |
-| 33 | `tx-d` vs `tx-data` fence name | **open** — pick before code |
-| 34 | Slug collision when parts are omitted from filenames | **open** — detection required regardless |
-| 35 | Part as a URL segment | **open** |
-| 36 | Structural identity vs nominal unions | assignment structural, `as` nominal |
-| 37 | Projection (`vf in .VecFields: .v`) implicit or marked | **open** |
-| 38 | Default type from first *assigned* vs first *declared* field | **open** — source-order fragility |
-| 39 | Hash-cons key: (type, values) or (values) | **open** — identical after erasure |
-| 40 | `to.X` namespace: reserved for type conversions? | **open** |
-| 41 | Function overloads, generics | deferred to a later phase |
+Status legend: ✅ resolved · 🟡 partially resolved · 🟠 unresolved (see the top of this document). Items that belong to TxData or TxGen are cross-referenced to their own registers.
+
+| # | Item | Resolution | Status |
+|---|---|---|---|
+| 1 | Indent skip (0 → 2) | treat as minimum next indent | ✅ |
+| 2 | List flag with no children | sets the running variable, no warning | ✅ |
+| 3 | `%.` prefix vs TxData key collision | retired by `%.` and hyphenated flags | ✅ |
+| 4 | `%%` escaping | structural — backticks protected by node type | ✅ |
+| 5 | Mid-line TxToken | allowed; needs the end-of-line lookahead relaxed | ✅ |
+| 6 | Multiple variants (`.cell.2x2.center:`) | single variant only today | 🟠 |
+| 7 | Blank line inside a block body | ends it; `:` is the spacer; matters doubly in Obsidian | ✅ |
+| 8 | Nested dot-tag in a body | broken (S4) — fix designed: `bodyMode: "blocks"` | 🟡 |
+| 9 | Unknown flag | falls through as attribute | ✅ |
+| 10 | `%20`-style URL collision | retired by `%.` | ✅ |
+| 11 | List root-frame seed | dot-tag seeds; Heading flag overrides | ✅ |
+| 12 | `.ul:` + `%ol-I` contradiction | flag wins, or warn | 🟠 |
+| 13 | `.R:5` vs assignment colon | resolved by `: ` requiring a following space | ✅ |
+| 14 | `<`/`>` suffix operators vs inline HTML | safe unless a letter follows `<` | ✅ |
+| 15 | Line preservation when stripping | replace with `indent + :` | ✅ |
+| 16 | `_meta.md` scope resolution | by line-range containment | ✅ |
+| 17 | TxKeyRef cycles | retired by declaration order | ✅ |
+| 18 | Attribute value must admit `%.` | required, now load-bearing for both props forms (§15.4); code fix is D10 | 🟡 |
+| 19 | Attribute scanner brace/paren depth | already depth-aware; nesting kept | ✅ |
+| 20 | `.$` / `.$$` substitution rules | `.$` substitutes keyrefs only; `.$$` also runs dot-tags | ✅ |
+| 21 | Member shadowing a page-level key | warn | ✅ |
+| 22 | `.tag:`-with-nothing asymmetry | retired — void blocks drop the colon | ✅ |
+| 23 | Comma grouping vs array delimiter | use `_` (`9_007_199_254_740_991`) | ✅ |
+| 24 | Unterminated `%%` | comments to end of document; warn | ✅ |
+| 25 | `#` vs `:#` constant markers | see TxData §22 #5 | 🟠 |
+| 26 | Validators at compile vs runtime | compile-time via closure rules; computed values open (TxData §22 #20) | 🟡 |
+| 27 | Interval expressions in type position | see TxData §22 #16 | 🟠 |
+| 28 | Nested TxComponents inside `.grid` cells | allowed once `bodyMode: "blocks"` lands; what `contentProp` then carries is undecided | 🟠 |
+| 29 | `render: "csr"` as a spec field vs `hydrate: "none"` | undecided | 🟠 |
+| 30 | Shared-data deduplication across islands | a page-level JSON block referenced by key | 🟠 |
+| 31 | No-JS fallback via Body Content | undecided | 🟠 |
+| 32 | Tx trait vs TypeScript props drift | props are rewritten as a TxData trait; nothing checks it against the TypeScript interface (TxData §22 #27) | 🟠 |
+| 33 | `tx-d` vs `tx-data` fence name | **`tx-d`** | ✅ |
+| 34 | Slug collision when parts are omitted from filenames | see TxGen §20 #1 | 🟠 |
+| 35 | Part as a URL segment | see TxGen §20 #2 | 🟠 |
+| 36 | Structural identity vs nominal unions | assignment structural, `as` nominal | ✅ |
+| 37 | Projection (`vf in .VecFields: .v`) implicit or marked | see TxData §22 #15 | 🟠 |
+| 38 | Default type from first *assigned* vs first *declared* field | see TxData §22 #22 | 🟠 |
+| 39 | Hash-cons key: (type, values) or (values) | see TxData §22 #23 | 🟠 |
+| 40 | `to.X` namespace: reserved for type conversions? | see TxData §22 #21 | 🟠 |
+| 41 | Function overloads, generics | 🔮 deferred to a later phase | 🟠 |
+| 42 | TxAttributes: after content on every TxElement, never in a Body Area, no attribute trees (§12) | adopted; kept open in case a case turns up that the one-line limit serves badly | 🟡 |
+| 43 | TxSetting placement | anywhere in a line today; may be restricted to the end of the line, the same form as TxAttributes | 🟠 |
+| 44 | TxBlock Heading Content and Body Content per tag: required, optional or none | content a tag does not take is ignored; whether tags declare it (and warn) is undecided | 🟡 |
+| 45 | Whole-props form `%props: %.ref` (§15.4) | explicit reserved name, mutually exclusive with named attributes; consequence: a component whose own first-level prop is named `props` cannot set it by name | 🟡 |
+| 46 | `headingProp` / `contentProp` together with `%props:` | allowed or error; if allowed, which wins when content targets a prop the `%props:` value also sets | 🟠 |
+| 47 | Where TxComponent props traits live | in the TxDoc global head, or in `.txd` files that the global head imports (needs a `.txd` import mechanism); either way they join global scope, and a name defined twice is an error | 🟠 |
+| 48 | React-reserved names as TxAttributes | `key`, `ref`, and `children` (unless it is the `contentProp`) rejected; every TxAttribute is explicit | ✅ |
+| 49 | Spread operator | none; a single `%props:` reference and 1-D array flattening by rank (TxData §8.5) replace it | ✅ |
+| 50 | TxComponent security: build-time sandbox, CSP emission (§15.8) | 🔮 deferred to a future public version; only the author's own components are linked for now | 🟠 |
+| 51 | Obsidian plugin | future version; Obsidian stays the authoring tool, VS Code the Tx editor (§16.6) | ✅ |
+| 52 | How the editor reads tag names from `TxConfig.ts` without executing component code | static read with the TypeScript compiler API, or a manifest written by `tx check` (TxData §22 #40) | 🟠 |
+| 53 | ComponentSpec reference: `.tsx` source or built `.js` module | not yet fixed | 🟠 |
 
 ---
 
@@ -1100,7 +1201,7 @@ More text
 ````
 The number is %.n
 
-.desmos: ...%.graph1-props
+.desmos: %props: %.graph1-props
 
 ```tx-d
 n: 42
