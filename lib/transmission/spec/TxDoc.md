@@ -1,8 +1,8 @@
-# Phase I: TxDoc
+# TxDoc
 
 **Transmission (Tx) — the Tx-markdown extension for `unified.js` pipelines**
 
-*Revised 28 September 2026.* This document describes the target design of TxDoc and, where the implementation in `lib/transmission/` differs, says so. It is one of four TxPhase documents. §16 bridges to TxData and TxGen.
+*Revised 28 September 2026.* This document describes the target design of TxDoc and, where the implementation in `lib/transmission/` differs, says so. It is one of the specs that make up the Spec (§1). §16 bridges to TxData and TxGen.
 
 **Revision 28 September 2026.** TxAttributes on every TxElement, after its content, never in a Body Area (§6, §12). No spread operator; TxComponent props supplied either by named first-level TxAttributes or whole by `%props:` (§15.4). The fence name `tx-d` is settled. The VS Code extension — colouring, autocomplete, hover — is the editor target; the Obsidian plugin moves to a future version (§16.5, §16.6). TxComponent security is deferred (§15.8). Open-items registers gain a status column (§18).
 
@@ -29,7 +29,7 @@ Orange rather than red, because ❌ already means *not built*. Resolved items st
 
 ## Table of Contents
 
-1. [The Four TxPhases](#1-the-four-txphases)
+1. [The Spec](#1-the-spec)
 2. [Terminology](#2-terminology)
 3. [What TxDoc Is](#3-what-txdoc-is)
 4. [The Three Tx Signatures](#4-the-three-tx-signatures)
@@ -53,16 +53,21 @@ Appendices: A. Tx vs MDX · B. Default TxConfig · C. Worked Examples · D. Refe
 
 ---
 
-## 1. The Four TxPhases
+## 1. The Spec
 
-| TxPhase | Scope |
-|---|---|
-| **TxDoc** (I) | The Tx-markdown integration in a `unified.js` pipeline. Dot-tags, poetic text, TxAttributes, TxComponents. File extension `.md`. |
-| **TxData** (II) | Immutable, statically typed data built on traits. Types erase at compile; JavaScript arrow functions supply code. Lives in `tx-d` fences inside a TxDoc, or in a standalone `.txd` file. |
-| **TxGen** (III) | Generation of a document tree into a static site: routes, slugs, link and image resolution, folder wrappers, the island build. |
-| **TxCode** (IV) | A full trait-based language. Distant; not scoped here. |
+The Spec is a set of specs in `lib/transmission/spec/`, developed **in parallel, not in sequence**:
 
-TxDoc, TxData and TxGen together are what a working SSG documentation site needs. Each phase may defer parts to a later phase; those are recorded in §18.
+| Spec | File | Scope |
+|---|---|---|
+| **TxDoc** | `TxDoc.md` | The Tx-markdown integration in a `unified.js` pipeline. Dot-tags, poetic text, TxAttributes, TxComponents. File extension `.md`. |
+| **TxData** | `TxData.md` | Immutable, statically typed data built on traits. Types erase at compile; JavaScript arrow functions supply code. Lives in `tx-d` fences inside a TxDoc, or in a standalone `.txd` file. |
+| **TxGen** | `TxGen.md` | Generation of a document tree into a static site: routes, slugs, link and image resolution, folder wrappers, the island build. |
+| **TxParser** | not yet written | Lexers, parsers and the language server, shared by the build and the VS Code extension. Its material lives in TxDoc and TxData until then. |
+| **TxCode** | future version | A full trait-based language. Not scoped here. |
+
+TxDoc, TxData and TxGen together are what a working SSG documentation site needs. Each spec may defer parts to a later version; those are recorded in its open-items register (§18 here).
+
+**"Phase" means one thing only:** a stage of the processing pipeline — Phase 0, Phase 1, and so on (§9). The specs are not phases.
 
 ---
 
@@ -95,7 +100,7 @@ The word "framework" was doing two jobs. Split:
 | Layer | Name | Examples |
 |---|---|---|
 | The component file mapped to a TxBlock | **TxComponent** | `Counter.tsx` |
-| The library that renders and manages state | **UI framework** | React (Phase I target), Vue, Svelte, Solid |
+| The library that renders and manages state | **UI framework** | React (the current target), Vue, Svelte, Solid |
 | App frameworks that also build static output | **meta-framework** | Next.js, Astro, Nuxt, SvelteKit |
 | Build-only static generators | **static site generator (SSG)** | Eleventy, Hugo, Docusaurus |
 | Whatever project `TxConfig.ts` lives inside | **host project** | the `mt-notes` Next.js app |
@@ -116,7 +121,7 @@ TxDoc extends markdown with dot-tags so a plain `.md` file can carry semantic el
 3. **One compile pass.** Tx-md in, HTML plus island JavaScript out, at build time.
 4. **Everything configurable.** `TxConfig.ts` is the user's file.
 5. **Graceful degradation.** Anything unrecognised is emitted as written (§17.4).
-6. **Framework-neutral.** Phase I targets React with Next.js and Astro as hosts, but nothing in the design is bound to them.
+6. **Framework-neutral.** TxDoc targets React with Next.js and Astro as hosts, but nothing in the design is bound to them.
 
 **What TxDoc is not.** Not a client-rendered app framework, not a database client. Documents are statically generated; dynamic behaviour lives inside TxComponents, which are ordinary UI-framework code outside the Tx domain.
 
@@ -227,6 +232,8 @@ One lexical form, three resolutions. Position and prefix decide which.
 
 Inside a `tx-d` fence, references use a bare `.` prefix instead of `%.` — there are too many of them for the longer form to be readable, and the fence gives unambiguous context.
 
+**What a TxKeyRef renders.** `%.value` renders the value's `.to.$`, the one conversion every trait has. Rendering Tx-md is always explicit: `%.tx-folder.to.$$` (TxData §14.1).
+
 **Why prefixes make the editor easy.** A dot-tag, a TxData reference and a TxAttribute each begin with a sigil that never starts a word in prose: nothing in normal text begins with `.` or `%`. So autocomplete fires only on `.` or `%` at the start of a token — after whitespace, line start, or an opening bracket — rather than on every keystroke as in languages whose names are bare words. See TxData §20.
 
 **Why `%.` and not `%`.** In the Heading Area both attributes and value references appear on one line:
@@ -278,7 +285,7 @@ The first paragraph keeps `This is some text` plus an inline comment. The middle
 - Stripping must **preserve line count**. Comment lines are replaced with `indent + :` so `getIndentedBlock()` still indexes `sourceLines` correctly and a TxBlock body is not split.
 - Ranges are recorded in `vfile.data.txComments` for editor colorization. Custom MDAST nodes are not used: a comment spanning partial paragraphs across block boundaries has no representable node type.
 - An unterminated `%%` comments out the rest of the document, matching Obsidian and matching every language with block comments. A build warning is worth the trouble.
-- ❓ Comments inside `.$` and `.$$` TxData string values are a later phase.
+- ❓ Comments inside `.$` and `.$$` TxData string values are a later version.
 
 ---
 
@@ -462,7 +469,7 @@ One placement: **after the TxElement's content, on the same line.** ✅ decided 
 
 ### 12.3 Values
 
-A value is a literal, a TxKeyRef (`%settings: %.my-settings`), or a bracketed construction (§6). In Phase I every literal is a string, `true`, or an array of strings. For a TxComponent the props trait types each first-level attribute (§15.4), so a literal is parsed against its field's type — the only typing a TxAttribute ever receives.
+A value is a literal, a TxKeyRef (`%settings: %.my-settings`), or a bracketed construction (§6). Untyped, every literal is a string, `true`, or an array of strings. For a TxComponent the props trait types each first-level attribute (§15.4), so a literal is parsed against its field's type — the only typing a TxAttribute ever receives.
 
 ### 12.4 No attribute trees ✅
 
@@ -960,7 +967,7 @@ TxEntry:
 
 `index` gives continuous chapter numbering across parts with no wrapper computing it. A wrapper sorts however it likes — Dewey order, date, alphabetical.
 
-**Document metadata** replaces YAML frontmatter, because TxData is typed. A global `.txd` head defines `TxMeta`; each document sets it in any fence. If `.title` is unset the filename is used, prefix stripped. Dates are ISO 8601 (`2026-09-25`). ❓ YAML frontmatter compatibility is a later phase.
+**Document metadata** replaces YAML frontmatter, because TxData is typed. A global `.txd` head defines `TxMeta`; each document sets it in any fence. If `.title` is unset the filename is used, prefix stripped. Dates are ISO 8601 (`2026-09-25`). ❓ YAML frontmatter compatibility is a later version.
 
 **Reentrancy.** A `.$$` value goes through the Tx-md pipeline, which resolves against `TxConfig`. So a folder wrapper is an island born from metadata rather than from a `.md` file — the one place a component originates outside a document. `_meta.md` images still need collecting, and an island declared there attaches to the folder's index route.
 
@@ -1010,7 +1017,7 @@ TxInline (full), TxHeading (full), TxBlock structure and Body extraction, tab-on
 | D3 | Names matched by `\w+` — no hyphen | widen to `[\w-]+` |
 | D4 | Attribute arrays split on `\|` | switch to ` :: ` |
 | D5 | Body Area TxAttributes are parsed, and override Heading | remove — TxAttributes come only after content; a Body Area is Body Content only (§12) |
-| D6 | `attributes` schema coerces `number` | drop for Phase I, or mark as the TxData hook |
+| D6 | `attributes` schema coerces `number` | drop for now, or mark as the TxData hook |
 | D7 | `html` strategy spreads attributes as raw HTML attributes | constrain |
 | D8 | Poetic classes ignore `classPrefix` | apply, or document `tx-` as fixed |
 | D9 | `ComponentSpec.framework` | rename to `ui` |
@@ -1104,12 +1111,12 @@ Status legend: ✅ resolved · 🟡 partially resolved · 🟠 unresolved (see t
 | 38 | Default type from first *assigned* vs first *declared* field | see TxData §22 #22 | 🟠 |
 | 39 | Hash-cons key: (type, values) or (values) | see TxData §22 #23 | 🟠 |
 | 40 | `to.X` namespace: reserved for type conversions? | see TxData §22 #21 | 🟠 |
-| 41 | Function overloads, generics | 🔮 deferred to a later phase | 🟠 |
+| 41 | Function overloads, generics | 🔮 deferred to a later version | 🟠 |
 | 42 | TxAttributes: after content on every TxElement, never in a Body Area, no attribute trees (§12) | adopted; kept open in case a case turns up that the one-line limit serves badly | 🟡 |
 | 43 | TxSetting placement | anywhere in a line today; may be restricted to the end of the line, the same form as TxAttributes | 🟠 |
 | 44 | TxBlock Heading Content and Body Content per tag: required, optional or none | content a tag does not take is ignored; whether tags declare it (and warn) is undecided | 🟡 |
 | 45 | Whole-props form `%props: %.ref` (§15.4) | explicit reserved name, mutually exclusive with named attributes; consequence: a component whose own first-level prop is named `props` cannot set it by name | 🟡 |
-| 46 | `headingProp` / `contentProp` together with `%props:` | allowed or error; if allowed, which wins when content targets a prop the `%props:` value also sets | 🟠 |
+| 46 | `headingProp` / `contentProp` together with `%props:` | allowed — the folder wrappers pass `%props:` plus Body Content (TxGen §8.2); which wins when content targets a prop the `%props:` value also sets is still open | 🟡 |
 | 47 | Where TxComponent props traits live | in the TxDoc global head, or in `.txd` files that the global head imports (needs a `.txd` import mechanism); either way they join global scope, and a name defined twice is an error | 🟠 |
 | 48 | React-reserved names as TxAttributes | `key`, `ref`, and `children` (unless it is the `contentProp`) rejected; every TxAttribute is explicit | ✅ |
 | 49 | Spread operator | none; a single `%props:` reference and 1-D array flattening by rank (TxData §8.5) replace it | ✅ |

@@ -1,10 +1,12 @@
-# Phase III: TxGen
+# TxGen
 
 **Transmission (Tx) — generating a document tree into a static site**
 
-*Drafted 28 September 2026.* This document specifies TxGen, the third of four TxPhases. Nothing in it is implemented; every section is a target. §20 records what is open. TxCode (Phase IV) is a distant phase with no dependency on this one.
+*Drafted 28 September 2026.* This document specifies TxGen, one of the specs that make up the Spec (TxDoc §1). Nothing in it is implemented; every section is a target. §20 records what is open. TxCode is a future version with no dependency on this one.
 
 **Revision 28 September 2026.** TxComponent security is deferred to a future public version (§13). The VS Code extension is the editor target and the Obsidian plugin a future version (§16). The open-items register gains a status column (§20).
+
+**Revision 29 September 2026.** Folder wrappers rewritten around the TxFolder union and `TxFolder-Head.txd`, with the generated landing page (§8.1, §8.2; same example as TxData §11.5). Deep links into a wrapper by URL parameters (§4.3).
 
 **Status markers**
 
@@ -156,6 +158,8 @@ This is the decision everything else rests on. **The slug is a pure function of 
 `.title` affects display only. A title edit is therefore free; renaming a file is the deliberate act that changes a URL, and that is also when Obsidian offers to update wikilinks.
 
 **Consequence:** renumbering a file changes its URL. Obsidian's rename handling fixes internal links; external bookmarks break. Documented, not solved.
+
+**The prefix stays in the URL, and that is fine.** Because filename and slug path are deterministic, any page can be linked directly — a book chapter from anywhere, outside its book wrapper. A link can also open a chapter *inside* its wrapper: link to the book's landing page with URL parameters (for example `/docs/my-book?chapter=01-01b-subject-b`), which the wrapper reads. Parameter names are the wrapper's own business.
 
 ### 4.4 Slugification ✅
 
@@ -313,31 +317,100 @@ Optimise at build — WebP/AVIF, resized variants — so each request is a fract
 
 ### 8.1 `_meta.md` ✅
 
-A markdown file so Obsidian can edit it, containing a `tx-d` fence:
+A markdown file so Obsidian can edit it, containing a `tx-d` fence. It does for a folder what a note's metadata does for a note: it selects the folder's kind and sets the folder's own title, description, date and landing-page text. A book folder:
 
 ````
 ```tx-d
-.tx-folder as .TxBook:
+.tx-folder as .TxBookFolder:
+	.title: My Book
+	.description: This is a short description of My Book.
+	.date: 2026-09-29
 	.content:
-		This is the intro to my book.
+		This is an intro to My Book
 ```
 ````
 
 A `.txd` file would be invisible in Obsidian, which is the whole reason for the `.md` container.
 
-**The folder type maps to a wrapper component in `TxConfig.ts`, not in `_meta.md`.** Notes declare intent; config binds intent to code. That keeps a vault portable between projects.
+**Notes declare intent; system files bind it to code.** `_meta.md` only selects an arm of the `TxFolders` union, by name. The TxGen global head, `TxFolder-Head.txd` (§8.2), binds each arm to a wrapper dot-tag through `.to.$$`, and `TxConfig.ts` maps that dot-tag to a React component. The vault stays portable between projects.
 
-**A missing `_meta.md` means no wrapper** — a plain listing, or nothing. That is what keeps a required `#tx-folder` field from forcing an `_meta.md` into every folder in the tree; the error then means "you wrote one but did not say what kind."
+**A missing `_meta.md` means the default landing page.** `TxFolder-Head.txd` declares `tx-folder` with the default arm `TxDefaultFolder` and a default `.content` (§8.2); a folder without `_meta.md` keeps that default.
 
-### 8.2 What a wrapper receives ❌
+### 8.2 The folder union and the landing page ❌
+
+**`TxFolder-Head.txd`** — the TxGen global head, merged first into every `_meta.md` module trait. The same example is TxData §11.5, where it illustrates the type-discriminated union:
 
 ```
-^ITxFolder %<:
+^ITxFolder:                         // interface
+	props in .FolderWrapperProps?   // set by the system (TxGen)
+	title in .$$?                   // set by the user
+	description in .$$?             // set by the user
+	date in .Date?                  // set by the user
+	content in .$$?                 // set by the user
+	to.$$                           // required of every implementer (TxData §10.2)
+
+TxDefaultFolder on .ITxFolder:
+	.to.$$:
+		.TxDefaultFolderWrapper: %props: %.props
+			%.content
+
+TxBookFolder on .ITxFolder:
+	.to.$$:
+		.TxBookWrapper: %props: %.props
+			%.content
+
+TxBlogFolder on .ITxFolder:
+	.to.$$:
+		.TxBlogWrapper: %props: %.props
+			%.content
+
+TxFolders in .Type<.ITxFolder>^{}:   // type XOR set
+	.TxDefaultFolder
+	.TxBookFolder
+	.TxBlogFolder
+
+tx-folder in .TxFolders as .TxDefaultFolder:
+	.content:
+		This is the .i{default} landing page text.
+```
+
+**How the layers fit.**
+
+1. The head defines the interface, the three arms, the union, and a default `tx-folder`.
+2. A folder's `_meta.md` (§8.1) overrides `tx-folder` once (TxData §3.2): it selects an arm by name and fills the folder's metadata. Every arm has no required fields left, so selecting one constructs an instance. A folder without `_meta.md` keeps the default.
+3. TxGen sets `.props` — the last, system-level layer. `props` is optional because the user never sets it.
+
+`.to.$$` is set once, system-level, in the head. Per folder the user only selects the arm and sets metadata — a book, a blog, or a default landing page for a section of the tree grouped by category, subject or anything else. The three wrapper dot-tags — `.TxDefaultFolderWrapper`, `.TxBookWrapper`, `.TxBlogWrapper` — are TxComponents registered in `TxConfig.ts`, each with `.content` as its `contentProp`.
+
+**These traits are consumed entirely inside Tx** — TxDoc, TxData and TxGen.
+
+**The generated landing page.** For each folder route, TxGen generates a landing page whose whole source is:
+
+```
+%.tx-folder.to.$$
+```
+
+The `.to.$$` is written explicitly. A TxKeyRef in text renders `.to.$` implicitly (`The value is %.value`), and nothing could tell the compiler automatically that Tx-md is wanted instead (TxData §14.1). For a book folder the result is:
+
+```
+.TxBookWrapper: %props: %.tx-folder.props
+	%.tx-folder.content
+```
+
+— a TxBlock that goes through the ordinary Tx-md pipeline and becomes an island like any other. Standing alone in its paragraph, the substitution is block-level Tx-md (§20 #32).
+
+**No trait name crosses the boundary.** The arm was selected by name inside Tx, and it has already done its job: it chose which wrapper dot-tag `.to.$$` produces. The component receives only erased props and its content (TxData §12.1).
+
+**What the system puts in `.props`:**
+
+```
+FolderWrapperProps:
 	name in .$            // folder name, prefix stripped
 	path in .$            // route
-	content in .$$?       // the folder's own intro, from _meta.md
+	title in .$$?         // copied by TxGen from tx-folder
+	description in .$$?   // copied by TxGen from tx-folder
+	date in .Date?        // copied by TxGen from tx-folder
 	children in .TxEntry[]
-	to.$$
 
 TxEntry:
 	filename in .$        // raw, with prefix
@@ -347,10 +420,12 @@ TxEntry:
 	title in .$
 	slug in .$
 	date in .Date?
-	tx-meta in .TxMeta?
+	tx-meta in .TxMeta?   // the child page's own metadata
 ```
 
-`order` and `index` are precomputed so no wrapper re-implements prefix parsing or natural sorting. `index` gives continuous chapter numbering. A wrapper then sorts however it likes — Dewey order for a book, `date` for a blog, `title` alphabetically for an index.
+`children` carries every child markdown file: its slug and its metadata. `order` and `index` are precomputed so no wrapper re-implements prefix parsing or natural sorting; `index` gives continuous chapter numbering. Each wrapper sorts as its kind requires — `TxBookWrapper` by Dewey prefix (`order`), `TxBlogWrapper` by `date` descending, the default wrapper however it chooses.
+
+`.to.$$` passes only `props` and `content`, so TxGen copies the folder's own `title`, `description` and `date` from `tx-folder` into `FolderWrapperProps`. The wrapper sees the folder's metadata alongside its children's.
 
 **A wrapper is an ordinary TxComponent receiving props.** `children` is just an array prop. Nothing new in the component model.
 
@@ -364,7 +439,7 @@ A blog wrapper sorts by `date`, which means `.date` must be set or the entry is 
 
 Two consequences: `_meta.md`'s own images still need collecting, and an island declared there attaches to the folder's index route rather than to any document.
 
-❓ Whether a `.$$` value may contain a TxComponent at all, or is restricted to prose.
+✅ A `.$$` value may contain a TxComponent. The folder model depends on it: each arm's `.to.$$` is a TxBlock naming a wrapper TxComponent (§8.2).
 
 ### 8.5 Book structure ❓
 
@@ -373,7 +448,7 @@ Two consequences: `_meta.md`'s own images still need collecting, and an island d
 - **Shell** — the book page is a cover, table of contents and next/previous navigation; each chapter is its own route with its own islands.
 - **Single page** — all chapters concatenated into one route, pulling in every chapter's rendered output and every island.
 
-The first is far simpler and matches "each chapter has its own slug." Needs confirming before the wrapper is written.
+The first is far simpler and matches "each chapter has its own slug." Needs confirming before the wrapper is written. Either way, deep links work: each chapter keeps its own route, and a wrapper can also show a chapter in place from URL parameters on its landing page (§4.3).
 
 ### 8.6 Inheritance ❓
 
@@ -402,7 +477,7 @@ If `.title` is unset, the filename is used with the prefix stripped (§4.6).
 
 Dates are ISO 8601 — `2026-09-25` — unambiguous, sorts as a string, and parses everywhere.
 
-🔮 YAML frontmatter compatibility is a later phase, for vaults that already use it.
+🔮 YAML frontmatter compatibility is a later version, for vaults that already use it.
 
 ### 9.2 What TxGen reads it for ✅
 
@@ -777,7 +852,7 @@ Steps 6–8 add books, blogs and interactivity.
 
 ## 20. Open Items Register
 
-Numbered independently of the TxDoc (Phase I §18) and TxData (Phase II §22) registers.
+Numbered independently of the TxDoc (§18) and TxData (§22) registers.
 
 Status legend: ✅ resolved · 🟡 partially resolved · 🟠 unresolved.
 
@@ -790,7 +865,7 @@ Status legend: ✅ resolved · 🟡 partially resolved · 🟠 unresolved.
 | 5 | Trailing-slash setting | either works; absolute image URLs make it irrelevant to assets | ✅ |
 | 6 | `_intro.md` versus `index.md` for folder content | `_meta.md`'s `.content` field | ✅ |
 | 7 | Do folders generate routes? | yes — a second `generateStaticParams` code path | ✅ |
-| 8 | Book wrapper: shell versus single concatenated page | shell is simpler and matches per-chapter slugs; needs confirming | 🟡 |
+| 8 | Book wrapper: shell versus single concatenated page | shell is simpler and matches per-chapter slugs; either way a wrapper can show a chapter in place from URL parameters (§4.3); needs confirming | 🟡 |
 | 9 | `_meta.md` inheritance into subfolders | per-folder with no inheritance is the norm; needs confirming | 🟡 |
 | 10 | Dynamic image references invisible to the scanner | mitigated by an unreferenced-file warning | ✅ |
 | 11 | Case-only filename collisions | warn; lowercase keys, original in value | ✅ |
@@ -798,7 +873,7 @@ Status legend: ✅ resolved · 🟡 partially resolved · 🟠 unresolved.
 | 13 | `==highlight==` versus `.hl{}` — two syntaxes, one output | decide deliberately | 🟠 |
 | 14 | `%20` (spaces) in URLs as an option | dropped; hyphens only | ✅ |
 | 15 | Shared-data deduplication across islands on one page | page-level JSON block by key | 🟠 |
-| 16 | `.$$` values containing TxComponents | allowed, or prose only (TxData §22 #26) | 🟠 |
+| 16 | `.$$` values containing TxComponents | allowed — the folder model depends on it (§8.2) | ✅ |
 | 17 | `_meta.md` islands attach to the folder route | stated; needs implementing | ✅ |
 | 18 | YAML frontmatter compatibility | 🔮 | 🟠 |
 | 19 | `esbuild-wasm` or Sucrase for on-device Obsidian builds | 🔮 with the Obsidian plugin — must be bundled, not fetched | 🟠 |
@@ -812,6 +887,11 @@ Status legend: ✅ resolved · 🟡 partially resolved · 🟠 unresolved.
 | 27 | RSS / sitemap generation | 🔮 | 🟠 |
 | 28 | TxComponent security (§13) | 🔮 deferred to a future public version; only the author's own components are linked for now | 🟠 |
 | 29 | Editor target | VS Code extension with colouring, autocomplete and hover; Obsidian plugin a future version (§16) | ✅ |
+| 30 | Folder without `_meta.md` | the head's default arm `TxDefaultFolder` — the default landing page (§8.1) | ✅ |
+| 31 | Folder's own `title`, `description`, `date` reaching the wrapper | TxGen copies them into `FolderWrapperProps` (§8.2) | ✅ |
+| 32 | Rendering a trait's `.to.$$` from text | explicit only: the landing page is `%.tx-folder.to.$$`; a bare TxKeyRef renders `.to.$` (TxData §14.1, §22 #53) | 🟡 |
+| 33 | Deep links into a wrapper | landing-page URL plus URL parameters; parameter names are each wrapper's own (§4.3) | 🟡 |
+| 34 | Folder kind → wrapper binding | `_meta.md` selects an arm by name; `TxFolder-Head.txd` binds the arm to a wrapper dot-tag via `.to.$$`; `TxConfig.ts` maps the dot-tag to the component (§8.1, §8.2) | ✅ |
 
 ---
 
@@ -878,9 +958,9 @@ TxGen needs a settings surface. Fields implied by this document:
 
 ```
 content/docs/
-	_meta.md                              .tx-folder as .TxIndex
+	_meta.md                              .tx-folder as .TxDefaultFolder
 	my-book/
-		_meta.md                          .tx-folder as .TxBook
+		_meta.md                          .tx-folder as .TxBookFolder
 		01-01 Subject A.md
 		01-01b Subject B.md
 		02-01 Subject D.md
@@ -892,9 +972,12 @@ content/docs/
 
 ````
 ```tx-d
-.tx-folder as .TxBook:
+.tx-folder as .TxBookFolder:
+	.title: My Book
+	.description: This is a short description of My Book.
+	.date: 2026-09-29
 	.content:
-		A short book about .i{Transmission}.
+		This is an intro to My Book
 ```
 ````
 

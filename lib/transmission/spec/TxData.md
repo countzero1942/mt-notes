@@ -1,10 +1,12 @@
-# Phase II: TxData
+# TxData
 
 **Transmission (Tx) — immutable, statically typed data for TxDocs**
 
-*Drafted 27 September 2026; revised 28 September 2026.* This document specifies TxData, the second of four TxPhases. Nothing in it is implemented yet; every section is a target. §22 records what is open.
+*Drafted 27 September 2026; revised 28 September 2026.* This document specifies TxData, one of the specs that make up the Spec (TxDoc §1). Nothing in it is implemented yet; every section is a target. §22 records what is open.
 
 **Revision 28 September 2026.** Fence name settled as `tx-d`. 1-D arrays accept members, array references, and both mixed; rank decides flattening and there is no spread operator (§8.5, §8.6). Imported JavaScript functions (§16.6). §20 becomes *Diagnostics and Editor Tooling*: the VS Code extension with colouring, `.`/`%`-triggered autocomplete and hover is first-class; the Obsidian plugin is a future version. The open-items register gains a status column (§22).
+
+**Revision 29 September 2026.** The TxFolder union as the worked example of a type-discriminated union (§11.5, same example as TxGen §8). Global heads are base layers, with one top-level override per file (§3.2). Two global heads: `TxData-Head.txd` and `TxFolder-Head.txd` (§3.3). Module settings (§3.5). Key Area and Value Area (§7.1). Interface members are required by ordinary declaration (§10.2). String, enum and key/value XOR sets (§11.2). Only `.to.$` is inherent; `to.%` is removed (§14.1). Erasure emits no type tag (§12.1); `%runtime` (§12.7).
 
 **Status markers**
 
@@ -13,7 +15,7 @@
 | ✅ | Settled — design fixed, safe to build against |
 | ❌ | Designed, not built |
 | ❓ | Open — see §22 |
-| 🔮 | Deliberately deferred to a later phase |
+| 🔮 | Deliberately deferred to a later version |
 
 In the §22 Status column: ✅ resolved · 🟡 partially resolved · 🟠 unresolved.
 
@@ -79,9 +81,11 @@ TxData is an immutable, statically typed data language. It exists so that a docu
 | **define** | Give a declared field its value. Dotted name: `.x: 42`. |
 | **construct** | Produce a value from a trait once every required field is filled. |
 | **constructable** | A trait with no unfilled required fields. Only constructable traits may be referenced as values. |
-| **module trait** | A trait formed by a data block: a global head plus one or more fences, merged. |
+| **module trait** | A trait formed by a data block: a global head as the base layer, with the file's fences merged over it. |
 | **partial module trait** | A module trait before merging — the head, or one fence. |
-| **key head** | The left side of an assignment: name, keywords, type, attributes. |
+| **key head** | The left side of an assignment: name, keywords, type, attributes. Also called the **Key Area**: the key's type is declared here (§7.1). |
+| **Value Area** | The value head and value body together: where the key is defined. |
+| **instance** | A trait once it is constructable. Immutable, so passed around by reference. |
 | **value head** | The right side of an assignment on the same line. |
 | **value body** | The indented lines under an assignment. |
 | **TxKeyRef** | A reference to a TxData value from TxDoc text: `%.name`. |
@@ -121,18 +125,22 @@ Every field in the global head is top-level in every document's module trait. Fe
 
 **Set rules apply.** A trait is a set, so a key signature occurs once. Declaring `x in .Z` in one fence and defining `.x: 42` in a later one is legal — two different signatures. Declaring `x` twice, or defining `.x` twice, is an error.
 
+**One override per file.** A global head is a **base layer**. Each descendant file — a TxDoc's fences taken together, a `_meta.md`, or a daughter `.txd` file — is a new layer over it, so it may set each top-level field the head declares **once**, overriding the head's value (§7.3). Within one file the fences still merge as a single set, so two fences in the same file setting the same field is an error. This is how a head offers defaults that a file may change: `tx-folder` (§11.5) and module settings (§3.5).
+
 **Top-level fields must be filled.** A module trait is always constructed, so a required top-level field with no definition is a compile error naming the field.
 
 ### 3.3 Two global heads ✅
 
+There are exactly two:
+
 | Head | Applies to |
 |---|---|
-| TxDoc global `.txd` | every document's module trait |
-| TxGen global `.txd` | every `_meta.md` folder trait |
+| `TxData-Head.txd` | every document's module trait, and every daughter `.txd` file |
+| `TxFolder-Head.txd` | every `_meta.md` folder trait (TxGen §8) |
 
 Both are project files, configurable in location. They have access to `TxConfig` because `.$$` values go through the Tx-md pipeline (§19.4).
 
-**TxComponent props traits are global too.** Each component's props are rewritten as a TxData trait (TxDoc §15.4), and every such trait is in scope in every document, so `in .DesmosProps` works in any fence. Whether they live in the TxDoc global head itself or in `.txd` files it imports is open (§22 #38); either way a name defined twice across global files is an error.
+**TxComponent props traits are global too.** Each component's props are rewritten as a TxData trait (TxDoc §15.4), and every such trait is in scope in every document, so `in .DesmosProps` works in any fence. Whether they live in `TxData-Head.txd` itself or in `.txd` files it imports is open (§22 #38); either way a name defined twice across global files is an error.
 
 "Global" is deliberately simple. The output is an SSG document tree built in one pass, not a web application, so one project-wide scope is enough.
 
@@ -141,6 +149,30 @@ Both are project files, configurable in location. They have access to `TxConfig`
 - **Data is parsed before any text is walked.** So a TxKeyRef anywhere in a document resolves against everything in every fence, regardless of position.
 - **Inside the data, declaration order governs — above, at data-block level.** `m: >> .n + 1` before `n: 42` is an error: nothing may reference what does not yet exist. This kills reference cycles structurally rather than by detection. Global heads and props traits count as above everything; then earlier fences in document order; then earlier fields in the same fence. (Inside a trait body, forward references to the trait's own members are legal — §17.2.)
 - **A `_meta.md` fence is scoped to its folder.** Scope comes from line-range containment, established at Phase 0, not from the block tree.
+
+### 3.5 Module settings ✅ / ❓
+
+A global head can expose a **module setting**: a top-level field with a default, which any daughter file — a `tx-d` fence in a TxDoc, a `_meta.md`, or a daughter `.txd` — may override once (§3.2). `tx-folder` (§11.5) is one. `trait-add-mode` is another, in `TxData-Head.txd`:
+
+```
+Trait-add-mode in .$^{}:
+	Name-spaced
+	Flattened
+
+trait-add-mode in .Trait-add-mode: Name-spaced
+```
+
+In a daughter file:
+
+```
+.trait-add-mode: Flattened
+```
+
+`trait-add-mode` sets how `add` composes traits in that file: namespaced, the default (§9.2), or flattened as if every `add` carried `%<`. The user chooses the default rather than the language imposing one.
+
+The members are strings — a `.$` XOR set (§11.2) — so they are written bare, not dot-referenced. Since `.$` is the default type, the bare-suffix rule (§11.1) allows `Trait-add-mode in ^{}:`.
+
+❓ With `Flattened` as a file's default, flattening collisions (§9.3) become more likely, and there is no marker to ask for a namespaced `add` at one site (§22 #50).
 
 ---
 
@@ -188,7 +220,7 @@ Compiled to JavaScript, non-identifier names are quoted object keys.
 
 ❓ Whether a trailing `//` is permitted at all, or comments must be whole-line, is open. Whole-line-only is the safest reading and costs little.
 
-**`%% … %%` for comments inside `.$` and `.$$` values.** Inside a string value, `//` is ordinary text, so prose comments use the Obsidian pair. This means the data parser strips comments *after* the `: ` split, on the value portion only — a second stripper, separate from Phase 0's document-level one. An unterminated `%%` ends at the value's end. 🔮 Deferred to a later phase; not needed for a working build.
+**`%% … %%` for comments inside `.$` and `.$$` values.** Inside a string value, `//` is ordinary text, so prose comments use the Obsidian pair. This means the data parser strips comments *after* the `: ` split, on the value portion only — a second stripper, separate from Phase 0's document-level one. An unterminated `%%` ends at the value's end. 🔮 Deferred to a later version; not needed for a working build.
 
 ### 4.4 Numeric literals ✅
 
@@ -286,6 +318,8 @@ There is no separate `function` concept. A trait member may hold a value or a pa
 
 `.none` is the single source of null, compiling to JavaScript `null`. `.some` means not-`.none`.
 
+**`#` is written on the declaration only.** A reference never carries it: a field declared `#to.$$` is referenced as `.my-field.to.$$`. ❓ Whether `#` sits at the left-most end of the key (`#to.$$`, `#x in .Z`) or next to the type is open (§22 #48).
+
 ❓ `#` versus `:#`. `#name` is a const field; `:#name` is a static constant on the type record. The two are distinct but the visual similarity is a hazard — confirm before both ship.
 
 ### 6.2 Kinds are two axes
@@ -328,6 +362,10 @@ x in .Bar: 23         // fills .c;  .a is 84, guaranteed
 | `.x: 42` | define or override |
 | `x in .Z: 42` | declare and define together |
 | `.x in .Z` | **illegal** — cannot re-declare |
+
+**Key Area and Value Area.** The Key Area (key head) declares the key's type, including `as`, which resolves a type union to one arm there (§11.4). The Value Area (value head and value body) defines the key. Typing never happens in the Value Area.
+
+**The `.` goes left-most.** A reference to something that exists carries its `.` at the far left of the key: `.x`, `.to.$`, `.tx-folder`. A bare key is a declaration, and a name is declared once — in a trait or in any trait it inherits from. So every inherited member is reached with `.`, and nothing can be referenced before it exists: a type before it is declared, a field before it is defined or constructed.
 
 ### 7.2 One shot per trait ✅
 
@@ -544,9 +582,24 @@ f in .$: foo in .IFoo: a: %foo.a, b: %foo.b
 str: >> .f(.m)
 ```
 
-### 10.2 Required-of-implementers ❓
+### 10.2 Required members of an interface ✅
 
-`^ITxFolder` needs to say "every implementer must supply `to.$$`". But `to.$$` is an inherited member, so the declare/define rule cannot express "declare it required here". A marker is needed — the grammar currently has no way to say it.
+No marker is needed. An interface requires a member of its implementers the same way any trait requires a field: by **declaring it without a value**.
+
+```
+^ITxFolder:
+	content in .$$?     // optional
+	to.$$               // required — every implementer must define .to.$$
+```
+
+`to.$$` here is a **declaration**, not a reference. In the `to` namespace, `.$$` is both the key and its type (§14.1). Only `.to.$` is inherent to every trait; `to.$$` does not exist until a trait declares it, which is why it is written bare. Implementers define it with the `.` reference: `.to.$$:`. The usual kinds apply (§6.1):
+
+| Declaration | Kind |
+|---|---|
+| `to.$$` | required |
+| `to.$$?` | optional |
+| `#to.$$` | const required — set once |
+| `#to.$$: constant text` | const |
 
 ### 10.3 Parameters ✅
 
@@ -572,19 +625,50 @@ A bare suffix means the default type: `to.array: [] >> [.x, .y, .z]` is an array
 
 ### 11.2 XOR sets ✅
 
+Three kinds of value set, told apart by the member type. Members are declared bare in every kind, because they are new names.
+
+**String sets — `.$^{}`.** Members are strings, written bare wherever they are used:
+
 ```
 Case in .$^{}:
 	upper
 	lower
 	none
+
+c in .Case: lower
 ```
 
-Members are declared bare because they are new names.
+**Enum sets — `.%^{}`.** Members are named values in their own right, referenced with `.` in the Value Area:
+
+```
+Trait-add-mode in .%^{}:
+	Name-spaced
+	Flattened
+
+trait-add-mode in .Trait-add-mode: .Name-spaced
+```
+
+**Key/value enums — `.%:.T^{}`.** Each member pairs its name with a value of type `.T`, written with the assignment colon. Every member has the inherent fields `.key` and `.value`:
+
+```
+NamedColor in .%:.Hex^{}:
+	Red: 0xFF0000
+	Green: 0x00FF00
+	Blue: 0x0000FF
+
+color in .NamedColor: .Red
+key in .$: .color.key            // "Red"
+value in .Hex: .color.value      // 0xFF0000
+```
+
+`.Hex` is a 32-bit integer written with a `0x` prefix (Appendix B). A custom `.RGB` trait could hold one such integer and expose `red`, `green` and `blue` as computed members that shift it.
+
+**Type sets — `.Type<I>^{}`** — are the fourth form: their members are types, and one is chosen with `as` in the Key Area (§11.4).
 
 ### 11.3 OR sets ✅
 
 ```
-FileAccess in .$:.W|{}:
+FileAccess in .%:.W|{}:
 	read
 	write
 	exe
@@ -592,10 +676,10 @@ FileAccess in .$:.W|{}:
 f1 in .FileAccess: .read | .write
 b1 in .B: >> .f1.has(.read)
 str1 in .$: >> .f1.to.$          // "read | write"
-val1 in .W: >> .f1.to.%          // 0x03
+val1 in .W: >> .f1.to.W          // 0x03
 ```
 
-`.$:.W` pairs a string name with a binary value. Member names are open when the parameter is of that set's type, so `.read` needs no qualifier.
+`.%:.W` pairs an enum member with a binary value. Member names are open when the parameter is of that set's type, so `.read` needs no qualifier.
 
 ❓ `has()` is all-of or any-of. C# splits these; Tx should too.
 
@@ -620,6 +704,70 @@ tx-folder in .TxFolders
 
 ❓ Narrowing needs syntax. A union value cannot enter arithmetic until discriminated, and `is` (or equivalent) does not exist yet. Exhaustiveness checking is what makes unions safe rather than merely expressive.
 
+### 11.5 Worked example: the TxFolder union ✅ / ❓
+
+The folder model of TxGen (TxGen §8) is the reference example of a type-discriminated union. TxGen uses the same example.
+
+**`TxFolder-Head.txd`** — the TxGen global head (§3.3), merged first into every `_meta.md` module trait:
+
+```
+^ITxFolder:                         // interface
+	props in .FolderWrapperProps?   // set by the system (TxGen)
+	title in .$$?                   // set by the user
+	description in .$$?             // set by the user
+	date in .Date?                  // set by the user
+	content in .$$?                 // set by the user
+	to.$$                           // required of every implementer (§10.2)
+
+TxDefaultFolder on .ITxFolder:
+	.to.$$:
+		.TxDefaultFolderWrapper: %props: %.props
+			%.content
+
+TxBookFolder on .ITxFolder:
+	.to.$$:
+		.TxBookWrapper: %props: %.props
+			%.content
+
+TxBlogFolder on .ITxFolder:
+	.to.$$:
+		.TxBlogWrapper: %props: %.props
+			%.content
+
+TxFolders in .Type<.ITxFolder>^{}:   // type XOR set
+	.TxDefaultFolder
+	.TxBookFolder
+	.TxBlogFolder
+
+tx-folder in .TxFolders as .TxDefaultFolder:
+	.content:
+		This is the .i{default} landing page text.
+```
+
+**A book folder's `_meta.md`** — selects an arm and sets this folder's metadata:
+
+````
+```tx-d
+.tx-folder as .TxBookFolder:
+	.title: My Book
+	.description: This is a short description of My Book.
+	.date: 2026-09-29
+	.content:
+		This is an intro to My Book
+```
+````
+
+What it shows:
+
+- **The arm name is the discriminator.** `as .TxBookFolder` selects the arm by name. The arms differ in value — each defines `.to.$$` its own way — and in any real type-name union the arms differ in at least one value, so the trait name suffices and no tag field is ever needed.
+- **A fully constructed trait is an object expression** — type and data combined. Construction is complete when no required field remains; fields may still be overridden. That is what separates Tx from TypeScript or C#, where the type is one thing and the data another.
+- **Dispatch through members, not narrowing.** A consumer never asks which arm it holds. It uses `.tx-folder.to.$$`, and each arm answers with its own body. No narrowing syntax is needed for this pattern (§22 #12 still applies elsewhere).
+- **The type name never leaves the compiler.** What crosses the SSG boundary is the result of `.to.$$` — a TxBlock naming a TxComponent, with erased props — never the union value (§12.1).
+- **Two levels of authorship.** `.to.$$` is set once, system-level, in the head: it binds each folder kind to its wrapper TxComponent, which `TxConfig.ts` maps to a React component. Per folder, the user only selects the arm and fills the metadata — a book, a blog, or a default landing page for a section of the tree grouped by category, subject or anything else.
+- **Selecting an arm constructs.** Every field of `.TxBookFolder` is optional or already defined, so it has no required fields left: `.tx-folder as .TxBookFolder` alone resolves the union and assigns an instance. A trait becomes an instance at the moment it is constructable; because Tx is immutable, the instance is passed around by reference (§18). TxGen supplies `props` afterwards, as the final system-level layer (TxGen §8.2).
+
+**The head declares and sets a default; a file overrides it.** `tx-folder in .TxFolders as .TxDefaultFolder:` declares the field, resolves the union to its default arm in the Key Area, and sets a default `.content`. A folder's `_meta.md` overrides it once (§3.2) with `.tx-folder as .TxBookFolder:`. A folder without `_meta.md` keeps the default — the default landing page.
+
 ---
 
 ## 12. The Type System
@@ -628,17 +776,19 @@ tx-folder in .TxFolders
 
 Types live only in the compiler's map. After compilation the output is plain JavaScript objects, primitives and arrays — no classes, no tags, no closures.
 
-**One exception:** a union arm that reaches a consumer outside the compiler must keep its arm name, because the type *is* the data there:
+**No type tag.** A union is discriminated inside Tx, by arm name (`as`), and consumed through the arm's members (§11.5). What crosses the SSG boundary is a member's result, never the union value itself, so no `$type` is emitted. TypeScript components receive untyped data and impose their own static types, exactly as Tx does: untyped data out, untyped data in, static types on both sides.
 
-```json
-{ "tx-folder": { "$type": "TxBook", "my-book-value": "some value" } }
-```
+❓ If a union value itself were ever passed to a consumer outside the compiler, its arm would be lost. Either forbid that (a compile error), or keep a `$type` for that case only (§22 #46).
 
-### 12.2 Primitive flattening ✅
+### 12.2 Primitive flattening ✅ / ❓
 
-A trait whose only instance member is `to.%` flattens to a JavaScript primitive rather than an object. That is what makes `.Z`, `.N`, `.URL` and `.CSSLength` cost nothing at runtime while still carrying constraints at compile time.
+A trait that holds only one primitive value erases to that primitive by itself, rather than to an object. That is what makes `.Z`, `.N`, `.URL` and `.CSSLength` cost nothing at runtime while still carrying constraints at compile time.
 
 `.Q` cannot flatten — it holds two `.Z` — which has a codegen consequence (§13.5).
+
+A primitive-value trait marked `%runtime` (§12.7) cannot flatten either: to answer `instanceof`, it becomes an object holding the primitive and `$type`.
+
+❓ With `to.%` removed (§14.1), the member that holds a primitive trait's value needs a new form (§22 #49).
 
 ### 12.3 The type record
 
@@ -690,6 +840,21 @@ a .. b        a <.. b        a ..< b        a <..< b
 ```
 
 Used in type position: `.N` is `.% in 1 <.. .Z:max`. ❓ This puts a type-level *expression* in a type slot, referencing another trait's static — a capability that appears nowhere else. The compiler must evaluate it.
+
+❓ `.%` in this form meant the trait's own value. `.%` now names the enum-member type (§11.2), so this form needs rewriting together with the `to.%` replacement (§22 #49).
+
+### 12.7 `%runtime` 🟡
+
+Types erase, so a plain object cannot say which trait it came from. `%runtime` in a trait's key head opts that trait in to runtime checking:
+
+```
+A %runtime:
+	…
+```
+
+A `%runtime` value carries its trait name in a `$type` string property. The compiler emits `isTrait(value, name)` and a `Symbol.hasInstance` hook, so `instanceof .A` works inside `>>` bodies. The tag must be a plain string property: values reach the Worker through structured clone, which drops Symbol-keyed properties. A primitive-value trait marked `%runtime` becomes an object holding the primitive and `$type` (§12.2).
+
+Open (§22 #32): whether `instanceof` is true for descendants and implementers, and whether the tag is stripped at erasure. Tx-level reflection over type records is deferred to TxCode; on-the-fly types are built with TypeScript functions for now.
 
 ---
 
@@ -803,19 +968,24 @@ Current position: **overflow surfaces only at `to.$`**, via an `isSafeInteger` c
 
 ## 14. Conversions
 
-### 14.1 The `to` namespace ✅
+### 14.1 The `to` and `from` namespaces ✅
 
-| Member | Produces |
-|---|---|
-| `to.%` | the trait's value |
-| `to.$` | a string |
-| `to.$$` | Tx-md, put through the pipeline |
+`to` means *convert to*; `from` means *convert from*. Both namespaces are reserved.
 
-Every trait inherits these, which is why they are referenced with a dot. The naming rule generalises: **a conversion member is named after its target type.** `.Q`'s `to.R` is to-real.
+| Member | Produces | Inherent? |
+|---|---|---|
+| `.to.$` | a string | **yes** — every trait has it |
+| `to.$$` | Tx-md, put through the pipeline | no — declared by a trait that needs it |
+| `to.X`, `X` a type | a value of type `X` — `.Q`'s `to.R` is to-real | no |
+| `to.name`, any other name | whatever it declares — `to.array` | no |
+
+**Only `.to.$` is inherent.** It is what a TxKeyRef in text renders: `This is my %.value` resolves through `.value.to.$`. Every other conversion is declared bare by the trait that offers it (`to.$$`, `to.R`, `to.array`) and referenced with `.` afterwards (§10.2). A `to.X` naming a known type must produce that type; any other name is free.
+
+**`to.%` is removed.** A conversion names its target type explicitly. ❓ Examples in §12.6, §13.2, §14.3, §15.1 and §16 still use `to.%`, pending the new form for a primitive trait's value (§22 #49).
 
 `from.*` is reserved for inbound conversions — `from.$` takes a string and produces the trait.
 
-`to.X` where `X` names a known type must produce that type. ❓ A free name like `to.array` is unchecked, which is invisible to a reader. Either reserve the namespace for type conversions or state the known-type list.
+**Rendering in text.** `%.value` renders `.to.$` implicitly. Rendering `.to.$$` is always explicit — `%.tx-folder.to.$$` — because nothing tells the compiler which one is wanted (§22 #53).
 
 ### 14.2 `.$` versus `.$$` ✅
 
@@ -1038,7 +1208,7 @@ Construction is deterministic and values are immutable, so identical values shar
 
 ### 18.3 Cache key ❓
 
-`(type, values)` or `(values)` alone. After erasure, two traits differing only in composition order or precision tag emit identical objects and could share one. The only thing that must stay in the key is a union's `$type`, which survives into output.
+`(type, values)` or `(values)` alone. After erasure, two traits differing only in composition order or precision tag emit identical objects and could share one. The only thing that could force the type into the key is a surviving union tag, and none survives erasure (§12.1).
 
 ---
 
@@ -1046,7 +1216,7 @@ Construction is deterministic and values are immutable, so identical values shar
 
 ### 19.1 What TxDoc supplies ✅
 
-Fixed in Phase I, inherited here:
+Fixed in the TxDoc spec, inherited here:
 
 1. **Phase 0 fence claiming** — `tx-d` blocks captured with line range and removed from the tree.
 2. **The TxToken scanner** — one pass over text nodes finding `%name` and `%.name`, with a pluggable resolver. TxDoc wires TxSettings; TxData adds the TxKeyRef resolver behind it.
@@ -1079,23 +1249,7 @@ TxMeta:
 #tx-meta in .TxMeta?
 ```
 
-```
-^ITxFolder %<:
-	content in .$$?
-	to.$$
-
-TxBook on .ITxFolder:
-	my-book-value in .$?
-	to.$$:
-		.TxBookWrapper:
-			%.content
-
-TxFolders in .Type<.ITxFolder>^{}:
-	.TxBook
-	.TxBlog
-
-#tx-folder in .TxFolders
-```
+The folder union — `TxFolder-Head.txd` with `^ITxFolder`, its three arms and `tx-folder` — is the worked example in §11.5, shared with TxGen §8.
 
 ```
 TxEntry:
@@ -1111,13 +1265,13 @@ TxEntry:
 
 Dates are ISO 8601 (`2026-09-25`) — unambiguous, sorts as a string, parses everywhere. ❓ `.Date` is a new system type: presumably a flattened `.$` with a validator, like `.URL`.
 
-❓ A required field in a global head has a blast radius: `#tx-folder` required means every `_meta.md` in the tree must set it. Better that a *missing* `_meta.md` means "no wrapper," so the error only fires when the file exists but says nothing.
+❓ Whether a folder with no `_meta.md` gets no wrapper, or the head's default arm (TxGen §20 #30).
 
 ### 19.4 Reentrancy ✅
 
 A `.$$` value goes through the Tx-md pipeline, which resolves against `TxConfig`. So TxData can instantiate a TxComponent, and a folder wrapper is an island born from metadata rather than from a `.md` file. Pipeline order: TxData → Tx-md → TxConfig → island.
 
-❓ Whether a `.$$` value may contain a TxComponent at all, or is restricted to prose.
+✅ A `.$$` value may contain a TxComponent — the folder union depends on it (§11.5).
 
 ### 19.5 Standalone use ✅
 
@@ -1264,7 +1418,7 @@ Steps 1–5 plus 8 and 9. That gives typed props and page metadata — enough fo
 
 ## 22. Open Items Register
 
-Numbered independently of the TxDoc register (Phase I §18).
+Numbered independently of the TxDoc register (TxDoc §18).
 
 Status legend: ✅ resolved · 🟡 partially resolved · 🟠 unresolved.
 
@@ -1275,7 +1429,7 @@ Status legend: ✅ resolved · 🟡 partially resolved · 🟠 unresolved.
 | 3 | Trailing `//` comments, or whole-line only | whole-line only is the safest reading | 🟠 |
 | 4 | `%%` comments inside `.$` / `.$$` values | 🔮 deferred | 🟠 |
 | 5 | `#` (const field) vs `:#` (static constant) visual collision | undecided | 🟠 |
-| 6 | Interface "required of implementers" marker | no grammar for it | 🟠 |
+| 6 | Interface "required of implementers" marker | none needed: an interface declares the member without a value, like any required field (§10.2) | ✅ |
 | 7 | Flatten declared *and* at inheritance (`Foo %<` + `add .Foo %<`) | redundant or error | 🟠 |
 | 8 | Variance: does `in .T` accept a descendant of `.T`? | `in` is "closed", which suggests invariance | 🟠 |
 | 9 | Parameter shadowing a member name | forbid or accept explicitly | 🟠 |
@@ -1290,30 +1444,39 @@ Status legend: ✅ resolved · 🟡 partially resolved · 🟠 unresolved.
 | 18 | Integer overflow beyond `2^53` | surfaced only at `to.$`; accepted, not protection | 🟡 |
 | 19 | Mixed precision join (`.R:3` + `.R.2`) | lowest wins; exact rule needs stating | 🟡 |
 | 20 | Validators at compile time vs surviving to runtime | computed values break compile-only | 🟠 |
-| 21 | `to.X` namespace: reserved for type conversions or free | undecided | 🟠 |
+| 21 | `to.X` namespace: reserved for type conversions or free | `to` and `from` are reserved; a type-named member must produce that type; other names are free; only `.to.$` is inherent (§14.1) | ✅ |
 | 22 | Default type from first *assigned* vs first *declared* field | first *declared* is the safer rule | 🟡 |
 | 23 | Hash-cons key: `(type, values)` or `(values)` | undecided | 🟠 |
 | 24 | `.Date` system type definition | presumably a flattened `.$` with a validator | 🟡 |
-| 25 | Required field in a global head — blast radius | a missing `_meta.md` means no wrapper (TxGen §8.1) | ✅ |
-| 26 | May a `.$$` value contain a TxComponent? | undecided | 🟠 |
+| 25 | Required field in a global head — blast radius | a folder without `_meta.md` keeps the head's default `tx-folder` — the default landing page (§11.5, TxGen §8.1) | ✅ |
+| 26 | May a `.$$` value contain a TxComponent? | yes — the folder union's `.to.$$` bodies do (§11.5, TxGen §8.2) | ✅ |
 | 27 | Tx trait vs TypeScript props drift | props are rewritten as a TxData trait; nothing checks it against the TypeScript interface | 🟠 |
 | 28 | Function props across the SSG boundary | out of scope by decision | ✅ |
 | 29 | `0^0` — JS gives 1; Tx guard must be emitted if it disagrees | undecided | 🟠 |
 | 30 | Generics beyond `.Type<I>` | 🔮 | 🟠 |
 | 31 | Function overloads | 🔮 — needs argument inference and tie-breaking | 🟠 |
-| 32 | Runtime `instanceOf`, reflection, `%reflection` flag | 🔮 | 🟠 |
+| 32 | Runtime `instanceof` — `%runtime` (§12.7) | `$type` string tag, `isTrait`, `Symbol.hasInstance`; open: subtype semantics, stripping at erasure; Tx-level reflection deferred to TxCode | 🟡 |
 | 33 | Mutability | 🔮 TxCode | 🟠 |
 | 34 | ESM module traits | 🔮 | 🟠 |
 | 35 | Default types as trait types, not just primitives | 🔮 | 🟠 |
 | 36 | `BigInt`, `.C` complex numbers | 🔮 | 🟠 |
 | 37 | Imported JavaScript functions for `>>` bodies (§16.6) | explicit import, one project-wide set, run in the Worker; where the import declaration lives is not fixed; TypeScript "perhaps" | 🟡 |
-| 38 | Where TxComponent props traits live | in the TxDoc global head, or `.txd` files it imports (needs a `.txd` import mechanism); either way global (§3.3) | 🟠 |
+| 38 | Where TxComponent props traits live | in `TxData-Head.txd`, or `.txd` files it imports (needs a `.txd` import mechanism); either way global (§3.3) | 🟠 |
 | 39 | Editor parser technology | Tree-sitter, Lezer, or hand-written incremental (§20.9); Lezer's CodeMirror advantage is no longer near-term with the Obsidian plugin deferred | 🟠 |
 | 40 | How the editor reads tag names from `TxConfig.ts` without executing component code | static read with the TypeScript compiler API, or a manifest written by `tx check` | 🟠 |
 | 41 | Mixing members and array references when filling a 1-D array | allowed (§8.5) | ✅ |
 | 42 | Spread operator | none (§8.6, TxDoc §15.4) | ✅ |
 | 43 | Completion triggers | only `.` and `%` at the start of a token (§20.4) | ✅ |
 | 44 | Global scope for completion and resolution | global head(s) plus every props trait; a name defined twice across global files is an error; depends on #38 | 🟡 |
+| 45 | Global head defines a field that a fence then redefines (`tx-folder`, §11.5) | heads are base layers; each file may override a top-level field once (§3.2) | ✅ |
+| 46 | A union value itself passed outside the compiler | union arms are consumed through members, so no tag is emitted (§12.1); for a raw union value: compile error, or `$type` for that case only | 🟠 |
+| 47 | Type-name discriminator | the arm name selected with `as`; arms always differ in some value; no tag field (§11.5) | ✅ |
+| 48 | Placement of `#` (const) | left-most on the key (`#to.$$`) or next to the type; never written on a reference (§6.1) | 🟡 |
+| 49 | What replaces `to.%` as a primitive trait's value slot | needed for §12.2 flattening, `.Z`/`.N` definitions (§12.6, §15.1), `sum` (§13.2) and codegen (§16); `.%` in §12.6 also clashes with the enum-member type | 🟠 |
+| 50 | `trait-add-mode: Flattened` | how to ask for a namespaced `add` at one site; collisions become more likely (§3.5) | 🟠 |
+| 51 | Module settings (§3.5) | a head field with a default, overridden once per file; `trait-add-mode` is the first | ✅ |
+| 52 | String, enum and key/value XOR sets (§11.2) | `.$^{}` members are bare strings; `.%^{}` members are dot-referenced; `.%:.T^{}` members have `.key` and `.value` | ✅ |
+| 53 | TxKeyRef rendering in text | implicit `.to.$`; `.to.$$` only when written explicitly (`%.tx-folder.to.$$`) (§14.1) | 🟡 |
 
 ---
 
@@ -1367,6 +1530,7 @@ Reasoning worth not relosing.
 | `:` alone on a line | array record terminator |
 | `a .. b`, `a <.. b`, `a ..< b`, `a <..< b` | intervals |
 | `.none` / `.some` | null / not-null |
+| `.key` / `.value` | name and value of a key/value enum member (§11.2) |
 
 ## Appendix B — System Types
 
@@ -1381,6 +1545,8 @@ Reasoning worth not relosing.
 | `.Z` | integers, `:#min` to `:#max` |
 | `.Q` | rationals — two `.Z`, cannot flatten |
 | `.R` | reals; `.R:n` significant, `.R.n` fixed |
+| `.Hex` | 32-bit integer written with a `0x` prefix |
+| `.%` | enum member — the member type of `.%^{}` and `.%:.T^{}` sets (§11.2) |
 | `.IN .IW .IZ .IQ .IR` | numeric interfaces — type-preserving bounds |
 | `.NaN` | folded into `.R` |
 | `.none` | the single null |
