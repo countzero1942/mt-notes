@@ -121,6 +121,69 @@ const EPSILON_FACTOR = 2 * Number.EPSILON;
 const SCALE_SPLIT = 200;
 
 /**
+ * The widest range of decade scales over which a double still carries 15
+ * reliable significant digits. Below about 1e-308 numbers become subnormal and
+ * lose mantissa bits; above about 1e308 they overflow.
+ */
+export const MAX_SAFE_SCALE = 308;
+export const MIN_SAFE_SCALE = -308;
+
+/**
+ * The most significant digits (or decimal places) a double can be rounded to
+ * reliably.
+ *
+ * Rounding to n digits is decided by digit n + 1, so the deciding digit must
+ * itself be reliable. A double has 15 reliable digits, so the 15th digit is
+ * the last one that can decide a rounding, and 14 is the most that can be
+ * kept. Rounding to 15 digits would be decided by the 16th, which is noise.
+ *
+ * `.R:n` and `.R.n` are capped here. Wider precision needs a 128-bit or
+ * arbitrary-precision number type, not a double.
+ */
+export const MAX_PRECISION_DIGITS = 14;
+
+/**
+ * Multiplies by a power of ten without overflowing an intermediate.
+ *
+ * `10 ** 309` is Infinity even when `n * 10 ** 309` would be finite (for a
+ * small `n`), so scales above {@link SCALE_SPLIT} are applied in two steps.
+ *
+ * A negative scale divides by the positive power instead of multiplying by
+ * the negative one. `10 ** 5` is exact while `10 ** -5` is not, so
+ * `1 * 10 ** -5` followed by `1 / 10 ** -5` gives 100000.00000000001, where
+ * dividing and multiplying by `10 ** 5` gives 100000. Powers of ten are exact
+ * up to `10 ** 22`.
+ *
+ * @param n The number to scale.
+ * @param scale The power of ten to multiply by.
+ * @returns `n * 10^scale`.
+ */
+export function safeDecadeMultiply(n: number, scale: number): number {
+	if (scale < 0) return safeDecadeDivide(n, -scale);
+	return scale > SCALE_SPLIT
+		? // Split the exponent so neither intermediate overflows to Infinity.
+			n * 10 ** SCALE_SPLIT * 10 ** (scale - SCALE_SPLIT)
+		: n * 10 ** scale;
+}
+
+/**
+ * Divides by a power of ten without overflowing an intermediate. The
+ * counterpart of {@link safeDecadeMultiply}; a negative scale multiplies by
+ * the positive power, for the same reason.
+ *
+ * @param n The number to scale.
+ * @param scale The power of ten to divide by.
+ * @returns `n / 10^scale`.
+ */
+export function safeDecadeDivide(n: number, scale: number): number {
+	if (scale < 0) return safeDecadeMultiply(n, -scale);
+	return scale > SCALE_SPLIT
+		? // Split the exponent so neither intermediate overflows to Infinity.
+			n / 10 ** SCALE_SPLIT / 10 ** (scale - SCALE_SPLIT)
+		: n / 10 ** scale;
+}
+
+/**
  * The decade scale of a number: the power of ten `s` such that
  * `|n|` lies in `[10^(s-1), 10^s)`.
  *
@@ -146,11 +209,7 @@ export function decadeScale(n: number): number {
  * where no floating-point slack exists and only exact equality is meaningful.
  */
 export function relativeEpsilonFromScale(scale: number): number {
-	if (scale <= SCALE_SPLIT) {
-		return EPSILON_FACTOR * 10 ** scale;
-	}
-	// Split the exponent so neither intermediate overflows to Infinity.
-	return EPSILON_FACTOR * 10 ** SCALE_SPLIT * 10 ** (scale - SCALE_SPLIT);
+	return safeDecadeMultiply(EPSILON_FACTOR, scale);
 }
 
 /**
@@ -194,6 +253,12 @@ export function isZeroAtScale(residue: number, scale: number): boolean {
  * Two numbers are equal when their difference falls within the relative
  * epsilon of the larger operand — that is, when they differ only in digits
  * that carry no information.
+ *
+ * This is the comparison for rounded values. Rounding shifts by powers of
+ * ten, and beyond 10^22 those powers are inexact, so two roundings to the same
+ * decimal can differ in the last bit (`1.0099999999999999e-207` against
+ * `1.01e-207`). They always agree within this tolerance; they need not agree
+ * under `===`.
  *
  * Non-finite handling follows IEEE-754: `NaN` is equal to nothing including
  * itself, and infinities are equal only to infinities of the same sign (both
@@ -372,45 +437,90 @@ export function safeSumAll(values: readonly number[]): number {
 // better than `Math.round`, whose `Math.round(-0.5)` gives `-0`.
 //
 // The problem is purely that the binary value carries no record of which
-// decimal produced it. Rounding it "up first" cannot help, because there is
-// nothing to consult.
+// decimal produced it. What CAN be recovered is the author's intent,
+// approximately, by nudging the value up by a relative epsilon before
+// rounding. A value sitting a few bits below a half IS that half as far as 15
+// reliable digits can tell, and two separate causes put it there: the binary
+// approximation of the author's literal, and error accumulated through earlier
+// arithmetic. One nudge covers both.
 //
-// What CAN be recovered is the author's intent, approximately, by nudging the
-// value up by one relative epsilon before rounding. A value sitting a few bits
-// below a half IS that half as far as 15 reliable digits can tell, and two
-// separate causes put it there: the binary approximation of the author's
-// literal, and error accumulated through earlier arithmetic. One nudge covers
-// both, because both are of the same order — a fraction of an ULP — while the
-// nudge is several ULP.
+// Rounding is done with arithmetic only — no string round trip. The decimal
+// point is moved with safeDecadeMultiply / safeDecadeDivide, so a shift past
+// 10^308 cannot overflow an intermediate.
 //
-// This gives decimal-intent rounding: the digit sequence the author wrote, or
-// computed to within 15 reliable digits, is what gets rounded, and half always
-// goes away from zero.
+// ---------------------------------------------------------------------------
+// THE REAL NUMBER AND THE RELIABLE DIGIT
+// ---------------------------------------------------------------------------
+//
+// Base 2 and base 10 do not align, so a double is not the decimal it prints.
+// The double for 1.005 is exactly 1.00499999999999989...; the real number it
+// stands for is 1.005. Every real number of up to 15 significant digits lies
+// within the nudge (2 x EPSILON, relative) of its double, and the rounding
+// functions round that real number, not the binary digits.
+//
+// The guarantee: rounding a real number of up to 15 significant digits to
+// n <= 14 digits gives exactly the decimal result, across the normal range of
+// doubles (about 2.2e-308 to 1.8e308). A decimal of up to 15 digits is either
+// exactly on a half, which the nudge carries up, or a whole unit of the 15th
+// digit away from it, tens of ULP outside the nudge. So the nudge never moves
+// a value that is not a half. The tests check this against exact decimal
+// arithmetic over seeded decimals, half of them built as exact halves.
+//
+// Why 14: rounding to n digits is decided by digit n + 1, so the 15th digit
+// is the last that can decide. Rounding to 15 would need the 16th, which a
+// double does not hold (MAX_PRECISION_DIGITS).
+//
+// Scope: the guarantee holds for values that carry 15 reliable digits —
+// literals, and results of arithmetic whose error stays within the nudge. A
+// subtraction that cancels leading digits leaves fewer: (8.575 + 1e5) - 1e5
+// is 8.57499999999709, already different from 8.575 in the 12th digit, so it
+// rounds to 8.57. Those digits were lost before rounding; no method working
+// on the double alone can recover them.
+//
+// Results are not guaranteed to be the canonical double for the decimal.
+// Beyond 10^22 the powers of ten used for the shift are inexact, so the last
+// bit can vary. Compare rounded values with areEqual, never with ===.
 // ===========================================================================
 
 /**
- * Moves a number's decimal point by a whole number of places.
+ * Rounds a non-negative magnitude to a number of decimal places, then
+ * reapplies the sign.
  *
- * Negative shifts divide by a positive power rather than multiplying by a
- * negative one: `10 ** 2` is exactly representable while `10 ** -2` is not, so
- * dividing costs one correctly-rounded operation where multiplying would
- * compound the power's own representation error into the product.
+ * The magnitude is nudged up by `2 × Number.EPSILON` relative to itself before
+ * rounding, so a value a few ULP below a half — from its literal's binary form
+ * or from earlier arithmetic — rounds as the half it was meant to be. Halves
+ * then go away from zero for both signs, because the rounding is always done
+ * on the magnitude.
  *
- * Powers of ten are exact up to `10 ** 22`. Beyond that the shift carries a
- * small error of its own, but a shift that large is rounding at a decimal
- * place a double cannot resolve anyway.
- *
- * @param n A finite number.
- * @param shift Places to move the decimal point; positive moves right.
- * @returns The shifted value, or `Infinity` if the shift overflows.
+ * @param absN The magnitude to round, `|n|`.
+ * @param sign The sign to reapply, `Math.sign(n)`.
+ * @param places Decimal places. Negative values round to the left of the
+ * decimal point: `-3` rounds to the nearest thousand.
+ * @returns The rounded value. Non-finite input, or a shift that overflows the
+ * exponent range, returns `sign * absN` unchanged.
  */
-function shiftDecimalPoint(n: number, shift: number): number {
-	return shift >= 0 ? n * 10 ** shift : n / 10 ** -shift;
-}
+export const fixedRoundAbs = (
+	absN: number,
+	sign: number,
+	places: number,
+): number => {
+	const epsilon = EPSILON_FACTOR * absN;
+	const adjustedN = absN + epsilon;
+
+	const toRound = safeDecadeMultiply(adjustedN, places);
+
+	// NaN and Infinity land here, and so does a shift too large for the
+	// exponent range (fixedRound(1.5, 500)). Nothing can be rounded at a
+	// decimal place a double cannot resolve, so the input is returned as is.
+	if (!Number.isFinite(toRound)) return sign * absN;
+
+	const rounded = Math.round(toRound);
+	return sign * safeDecadeDivide(rounded, places);
+};
 
 /**
  * Rounds to a fixed number of decimal places, rounding the decimal the author
- * wrote rather than its binary approximation.
+ * wrote rather than its binary approximation. `.R.n` maps to this.
  *
  * Half always rounds away from zero, symmetrically for positive and negative
  * values — the rule used for money everywhere.
@@ -421,10 +531,7 @@ function shiftDecimalPoint(n: number, shift: number): number {
  *     fixedRound(2.5, 0)     ->  3
  *
  * Plain `toFixed` returns 1.00, -1.00 and 2.67 for the first three, because it
- * rounds the binary value. Arithmetic rounding (`Math.round(x * 100) / 100`)
- * gets those right or wrong depending on the value and additionally lands on
- * whichever double the scaling and division happen to produce, often with a
- * long tail.
+ * rounds the binary value.
  *
  * @param n The number to round.
  * @param places Decimal places. Negative values round to the left of the
@@ -432,58 +539,49 @@ function shiftDecimalPoint(n: number, shift: number): number {
  * @returns The rounded value, or `n` unchanged if it is not finite or if the
  * requested shift overflows the exponent range.
  */
-export function fixedRound(n: number, places = 0): number {
-	if (!Number.isFinite(n)) return n;
-	if (n === 0) return 0;
-
-	const shift = Math.trunc(places);
-	const sign = n < 0 ? -1 : 1;
-
-	// Round the magnitude so that halves go away from zero. Math.round alone is
-	// asymmetric: it rounds halves toward positive infinity, so -0.5 becomes -0.
-	const shifted = shiftDecimalPoint(Math.abs(n), shift);
-	if (!Number.isFinite(shifted)) return n;
-
-	// Nudge up by one relative epsilon before rounding. Shifting the decimal
-	// point introduces a fraction of an ULP of its own error, and the value may
-	// already sit a little below the half from its literal's binary form or
-	// from earlier arithmetic. The nudge is several ULP, so it absorbs all
-	// three. Anything it moves across a boundary differed from that boundary
-	// beyond the reliable precision of a double.
-	const nudged = shifted + relativeEpsilon(shifted);
-
-	return sign * shiftDecimalPoint(Math.round(nudged), -shift);
-}
+export const fixedRound = (n: number, places = 0): number => {
+	const sign = Math.sign(n);
+	const absN = Math.abs(n);
+	return fixedRoundAbs(absN, sign, places);
+};
 
 /**
  * Rounds to a number of significant digits, rounding the decimal the author
- * wrote rather than its binary approximation.
+ * wrote rather than its binary approximation. `.R:n` maps to this.
  *
- * Implemented in terms of {@link fixedRound}: the decimal exponent is read
- * exactly from the number's own exponential form, then the significant-digit
- * request is converted into a decimal-place request.
+ * The significant-digit request is converted into a decimal-place request
+ * from the number's digit count, then handed to {@link fixedRoundAbs}.
  *
- *     precisionRound(1.005, 3)    ->  1.01
- *     precisionRound(123456, 3)   ->  123000
- *     precisionRound(0.00012345, 3) -> 0.000123
+ *     precisionRound(1.005, 3)      ->  1.01
+ *     precisionRound(123456, 3)     ->  123000
+ *     precisionRound(0.00012345, 3) ->  0.000123
  *
  * @param n The number to round.
- * @param sigDigits Significant digits. Clamped to 1..15, since digits beyond
- * the 15th carry no reliable information in a double — which is also why
- * `.R:n` caps at 15.
- * @returns The rounded value, or `n` unchanged if it is not finite.
+ * @param sigDigits Significant digits. Clamped to 1..{@link MAX_PRECISION_DIGITS}.
+ * @returns The rounded value; `0` for `0`; `n` unchanged if it is not finite.
  */
 export function precisionRound(n: number, sigDigits: number): number {
 	if (!Number.isFinite(n)) return n;
 	if (n === 0) return 0;
 
-	const digits = Math.min(Math.max(Math.trunc(sigDigits), 1), 15);
+	const digits = Math.min(
+		Math.max(Math.trunc(sigDigits), 1),
+		MAX_PRECISION_DIGITS,
+	);
 
-	// Read the decimal exponent from the string form rather than via
-	// Math.log10, which is inexact for some powers of ten and would put the
-	// decimal point one place out. This is a read, not arithmetic, so it costs
-	// nothing in precision.
-	const exponent = Number(n.toExponential().split("e")[1]);
+	// 123,456,789 -> 6 significant digits -> 123,457,000
+	// numDigits: 9, sigDigits: 6, roundPlaces: 6 - 9 = -3
+	const absN = Math.abs(n);
+	const signN = Math.sign(n);
 
-	return fixedRound(n, digits - 1 - exponent);
+	// Math.ceil(log10) gives the digit count for every number whose log10 is
+	// not an integer. But a 14- or 15-digit number just below a power of ten
+	// can have its log10 rounded to an integer for lack of precision, and a
+	// true power of ten has an integer log10 too; ceil undercounts both by one.
+	// Adding 1 and flooring counts correctly in every case.
+	const numDigits = Math.floor(Math.log10(absN) + 1);
+
+	const roundPlaces = digits - numDigits;
+
+	return fixedRoundAbs(absN, signN, roundPlaces);
 }

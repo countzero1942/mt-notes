@@ -8,6 +8,8 @@
 
 **Revision 29 September 2026.** Folder wrappers rewritten around the TxFolder union and `TxFolder-Head.txd`, with the generated landing page (§8.1, §8.2; same example as TxData §11.5). Deep links into a wrapper by URL parameters (§4.3).
 
+**Revision 3 October 2026.** In `TxFolder-Head.txd`, `^to.$$` is an abstract member, defined by every folder type (§8; TxData §10.2).
+
 **Status markers**
 
 | Marker | Meaning |
@@ -347,7 +349,7 @@ A `.txd` file would be invisible in Obsidian, which is the whole reason for the 
 	description in .$$?             // set by the user
 	date in .Date?                  // set by the user
 	content in .$$?                 // set by the user
-	to.$$                           // required of every implementer (TxData §10.2)
+	^to.$$                          // abstract: defined by every implementer (TxData §10.2)
 
 TxDefaultFolder on .ITxFolder:
 	.to.$$:

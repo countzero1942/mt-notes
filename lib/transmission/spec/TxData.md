@@ -2,11 +2,15 @@
 
 **Transmission (Tx) — immutable, statically typed data for TxDocs**
 
-*Drafted 27 September 2026; revised 28 September 2026.* This document specifies TxData, one of the specs that make up the Spec (TxDoc §1). Nothing in it is implemented yet; every section is a target. §22 records what is open.
+*Drafted 27 September 2026; revised 3 October 2026.* This document specifies TxData, one of the specs that make up the Spec (TxDoc §1). Nothing in it is implemented yet; every section is a target. §22 records what is open.
 
 **Revision 28 September 2026.** Fence name settled as `tx-d`. 1-D arrays accept members, array references, and both mixed; rank decides flattening and there is no spread operator (§8.5, §8.6). Imported JavaScript functions (§16.6). §20 becomes *Diagnostics and Editor Tooling*: the VS Code extension with colouring, `.`/`%`-triggered autocomplete and hover is first-class; the Obsidian plugin is a future version. The open-items register gains a status column (§22).
 
 **Revision 29 September 2026.** The TxFolder union as the worked example of a type-discriminated union (§11.5, same example as TxGen §8). Global heads are base layers, with one top-level override per file (§3.2). Two global heads: `TxData-Head.txd` and `TxFolder-Head.txd` (§3.3). Module settings (§3.5). Key Area and Value Area (§7.1). Interface members are required by ordinary declaration (§10.2). String, enum and key/value XOR sets (§11.2). Only `.to.$` is inherent; `to.%` is removed (§14.1). Erasure emits no type tag (§12.1); `%runtime` (§12.7).
+
+**Revision 2 October 2026.** `.R:n` and `.R.n` cap at 14 digits (§13.1). A precision tag rounds the value when the field is set, by value or by body (§13.1). `math.ts` rounds with arithmetic only, exactly for every real number of up to 15 significant digits; rounded values are compared with the relative epsilon, never `===` (§13.8). Tx islands — dotted calls that carry TxData semantics into a `>>` body: `.areEqual` and `.safeSum` (§16.7).
+
+**Revision 3 October 2026.** Discriminated unions (§11.6): the type name is the discriminator; every instance of an object arm carries `$type`, and `instanceof` is generated; routers for abstract members are 🔮 TxCode. `^:` declares a union's shared interface. `^` marks an abstract member — one tied to the type and defined by every implementer, such as `^to.$$` — as distinct from a required field, which is tied to construction (§10.2); `.%` is the receiver. A user-defined interface is always abstract, with at least one `^` member; the numeric interfaces are the exception (§10.1). A typed `.Error` and the result suffix `.T??`; `.T?!` is 🔮 TxCode (§11.1). Erasure keeps `$type` on union arms (§12.1).
 
 **Status markers**
 
@@ -560,17 +564,20 @@ A `>>` body compiled against `.a` as a *value* emits `a`; against `.a` as a comp
 
 Not a contract in the C# sense. **An interface constrains what a consumer sees.** A function that needs three of a trait's twelve fields declares a parameter of an interface type, and only those three are visible.
 
-Because of that framing, an interface may carry default values, and may be fully filled. It is a trait like any other; `^` marks it as an interface and makes it non-instantiable alone.
+**A user-defined interface is always abstract.** It holds at least one abstract member (§10.2) — a member every implementer must define, which declares type structure rather than an instance value. Beyond that it is a trait like any other: it may carry default values, and its other members may be filled. `^` marks it as an interface and makes it non-instantiable alone, and its name starts with `I` (`^IFoo`).
 
 ```
 ^IFoo:
 	a in .Z
 	b in .R:3
+	^unit in .$                // abstract — each implementer declares its own
 
 Base:
 	x in .$
 
-SubBase on .Base .IFoo
+SubBase on .Base .IFoo:
+	.IFoo:
+		.unit: cm
 
 m in .SubBase:
 	.IFoo:
@@ -582,24 +589,42 @@ f in .$: foo in .IFoo: a: %foo.a, b: %foo.b
 str: >> .f(.m)
 ```
 
-### 10.2 Required members of an interface ✅
+**The numeric interfaces are the exception.** `.IN`, `.IW`, `.IZ`, `.IQ` and `.IR` are system-defined interfaces over traits that flatten to a primitive (§12.2). They hold no abstract members. Each preserves the type of the value it is given and denotes the operations closed under its number type (§13.2).
 
-No marker is needed. An interface requires a member of its implementers the same way any trait requires a field: by **declaring it without a value**.
+### 10.2 Abstract members and required fields ✅
+
+An interface asks two different things of what implements it, and marks them differently:
+
+- An **abstract member** is tied to the **type**. It is what distinguishes one implementer from another, and every implementer defines it as part of its own type declaration, by a value or by a `>>` body. It is marked `^`.
+- A **required field** is tied to the **instance**. It is a value an instance must be given before it is constructed (§8.2), declared the ordinary way: without a value.
 
 ```
 ^ITxFolder:
 	content in .$$?     // optional
-	to.$$               // required — every implementer must define .to.$$
+	^to.$$              // abstract — every implementer defines .to.$$
 ```
 
-`to.$$` here is a **declaration**, not a reference. In the `to` namespace, `.$$` is both the key and its type (§14.1). Only `.to.$` is inherent to every trait; `to.$$` does not exist until a trait declares it, which is why it is written bare. Implementers define it with the `.` reference: `.to.$$:`. The usual kinds apply (§6.1):
+In the TxFolder union (§11.5), `.TxBookFolder` and `.TxBlogFolder` differ only in how they define `.to.$$`, which binds each to its own wrapper. That definition belongs to their type structure, not to any one instance, so it is abstract.
+
+`^to.$$` here is a **declaration**, not a reference. In the `to` namespace, `.$$` is both the key and its type (§14.1). Only `.to.$` is inherent to every trait; `to.$$` does not exist until a trait declares it, which is why it is written bare. Implementers define it with the `.` reference: `.to.$$:`. The usual kinds apply (§6.1):
 
 | Declaration | Kind |
 |---|---|
-| `to.$$` | required |
+| `^to.$$` | abstract — defined by every implementer |
+| `to.$$` | required — filled at construction |
 | `to.$$?` | optional |
 | `#to.$$` | const required — set once |
 | `#to.$$: constant text` | const |
+
+**Abstract computed members.** An abstract member may be computed: each implementer supplies its own `>>` body. It resolves to a value on construction like any computed member (§16.3). `.%` is the receiver — the instance itself, `this` — and is declared as the member's only parameter:
+
+```
+^process in .Response: .% in .PaymentMethod
+```
+
+Implementers define it with the `.` reference and a body: `.process: >> …`. Inside the body the receiver's members are reached directly (`.cardNumber`). A value the body needs, such as a fee, is a required field declared alongside it. ❓ Abstract members with parameters beyond `.%` are open (§22 #59).
+
+Every user-defined interface has at least one `^` member (§10.1); its `^` members are what every implementer must define.
 
 ### 10.3 Parameters ✅
 
@@ -618,6 +643,10 @@ A parameter typed by an interface is how a family of types is accepted, given th
 | `.T^{}` | XOR set — pick exactly one |
 | `.T\|{}` | OR set — pick any combination |
 | `.T?` | optional — `.T ^ .none`, defaulting `.none` |
+| `.T??` | result — `.T ^ .Error`: the value, or the error that replaced it |
+| `.T?!` | 🔮 TxCode — throwable result: `.T`, or the `.Error` is thrown |
+
+`.Error` is a typed trait standing for the JavaScript `Error`, used as a union arm (§11.6). It carries `message` as an ordinary field, so it survives serialization as `{ "$type": "Error", "message": … }`; a JavaScript `Error` serializes as `{}`, because its `message` is not enumerable. `.T??` keeps an error as data. `.T?!` belongs to TxCode, where code runs and a thrown error can be caught.
 
 `^{}` and `|{}` rather than bare `^` and `|` so that `[]`, `^{}` and `|{}` read as one family of container suffixes.
 
@@ -696,13 +725,13 @@ tx-folder in .TxFolders
 	.my-book-value: some value
 ```
 
-`as` selects one arm. It is **not a cast**: only an arm of a declared set can be selected, nothing outside it. This is a **type-only discriminated union** — no tag field is needed, unlike TypeScript.
+`as` selects one arm. It is **not a cast**: only an arm of a declared set can be selected, nothing outside it. The **type name is the discriminator**: unlike TypeScript, no discriminant field is declared, and the compiler writes the arm name into each instance as `$type` (§11.6).
 
 **Unions of unions flatten.** `{T1, {TA,TB}, T3}` is `{T1, TA, TB, T3}`, so nested `as` is never required. A nested union name remains useful as a reusable alias. Duplicate arms after flattening are an error, as is an arm that subsumes another (`.N ^ .Z` is just `.Z`).
 
 `|{}` on types is illegal — a value cannot be two types at once.
 
-❓ Narrowing needs syntax. A union value cannot enter arithmetic until discriminated, and `is` (or equivalent) does not exist yet. Exhaustiveness checking is what makes unions safe rather than merely expressive.
+**Discriminating and exhaustiveness.** In the Key Area an arm is selected with `as`. Inside a `>>` body it is tested with `instanceof .Arm` (§11.6). Exhaustiveness comes from the declaration, not from analysing code: every arm must implement each `^` member of the union's interface.
 
 ### 11.5 Worked example: the TxFolder union ✅ / ❓
 
@@ -717,7 +746,7 @@ The folder model of TxGen (TxGen §8) is the reference example of a type-discrim
 	description in .$$?             // set by the user
 	date in .Date?                  // set by the user
 	content in .$$?                 // set by the user
-	to.$$                           // required of every implementer (§10.2)
+	^to.$$                          // abstract: defined by every implementer (§10.2)
 
 TxDefaultFolder on .ITxFolder:
 	.to.$$:
@@ -759,14 +788,86 @@ tx-folder in .TxFolders as .TxDefaultFolder:
 
 What it shows:
 
-- **The arm name is the discriminator.** `as .TxBookFolder` selects the arm by name. The arms differ in value — each defines `.to.$$` its own way — and in any real type-name union the arms differ in at least one value, so the trait name suffices and no tag field is ever needed.
+- **The arm name is the discriminator.** `as .TxBookFolder` selects the arm by name. The arms differ in value — each defines `.to.$$` its own way — so the trait name suffices, and no discriminant field is ever declared. The compiler writes it as `$type` (§11.6).
 - **A fully constructed trait is an object expression** — type and data combined. Construction is complete when no required field remains; fields may still be overridden. That is what separates Tx from TypeScript or C#, where the type is one thing and the data another.
 - **Dispatch through members, not narrowing.** A consumer never asks which arm it holds. It uses `.tx-folder.to.$$`, and each arm answers with its own body. No narrowing syntax is needed for this pattern (§22 #12 still applies elsewhere).
-- **The type name never leaves the compiler.** What crosses the SSG boundary is the result of `.to.$$` — a TxBlock naming a TxComponent, with erased props — never the union value (§12.1).
+- **Here the union value never leaves the compiler.** What crosses the SSG boundary is the result of `.to.$$` — a TxBlock naming a TxComponent, with erased props — not the union value. A union value that does cross carries its `$type` (§11.6, §12.1).
 - **Two levels of authorship.** `.to.$$` is set once, system-level, in the head: it binds each folder kind to its wrapper TxComponent, which `TxConfig.ts` maps to a React component. Per folder, the user only selects the arm and fills the metadata — a book, a blog, or a default landing page for a section of the tree grouped by category, subject or anything else.
 - **Selecting an arm constructs.** Every field of `.TxBookFolder` is optional or already defined, so it has no required fields left: `.tx-folder as .TxBookFolder` alone resolves the union and assigns an instance. A trait becomes an instance at the moment it is constructable; because Tx is immutable, the instance is passed around by reference (§18). TxGen supplies `props` afterwards, as the final system-level layer (TxGen §8.2).
 
 **The head declares and sets a default; a file overrides it.** `tx-folder in .TxFolders as .TxDefaultFolder:` declares the field, resolves the union to its default arm in the Key Area, and sets a default `.content`. A folder's `_meta.md` overrides it once (§3.2) with `.tx-folder as .TxBookFolder:`. A folder without `_meta.md` keeps the default — the default landing page.
+
+### 11.6 Discriminated unions ✅ / ❓
+
+In TypeScript, a discriminated union is built by hand. Each arm declares a literal field — `CreditCardPayment` carries `method: 'credit_card'` — and the author writes the narrowing switches, which the compiler analyses for exhaustiveness. The type name and the field say the same thing twice.
+
+In Tx the **type name is the discriminator**. The compiler knows the full set of arms from the declaration, so it generates what a TypeScript author writes by hand:
+
+| Generated | What it is |
+|---|---|
+| `$type` | a string property on every instance of every object arm, holding the arm name — at build and in the output |
+| `instanceof .Arm` | a `Symbol.hasInstance` hook that reads `$type`; instances stay plain objects, never classes, because a trait is constructed in stages (§17) |
+
+🔮 **Routers belong to TxCode.** A generated router per abstract member — a function in the union's type record that takes the instance as `.%`, runs `switch (true)` with an `instanceof` test per arm, and calls that arm's implementation — needs strong typing inside code blocks to reference overloaded functions (§22 #31, #63). In TxData, an implementation's inputs are required fields and its abstract members are computed members that resolve inside the type on construction, so no `instanceof` routing is written outside the type.
+
+```
+PaymentMethod in .Type^{}:
+	^:
+		Response in .Type^{}:
+			Success:
+				code in .$
+			Failure:
+				message in .$
+		^process in .Response: .% in .PaymentMethod
+	CreditCard:
+		cardNumber in .$
+		cvv in .$
+		expiry in .$
+		.process: >>
+			const result = .chargeCreditCard(.cardNumber, .cvv, .expiry);
+			if (result instanceof .Error) return .Failure(result.message);
+			return .Success(result);
+	PayPal:
+		email in .$
+		payerId in .$
+		.process: >>
+			const result = .redirectPayPal(.email, .payerId);
+			if (result instanceof .Error) return .Failure(result.message);
+			return .Success(result);
+	Crypto:
+		walletAddress in .$
+		blockChain in .BlockChain
+		.process: >>
+			const result = .transferCrypto(.walletAddress, .blockChain);
+			if (result instanceof .Error) return .Failure(result.message);
+			return .Success(result);
+
+myPayment in .PaymentMethod as .Crypto:
+	.walletAddress: …
+	.blockChain: .Bitcoin
+
+responses in .PaymentMethod.Response[]: >> .payments.map((p) => p.process);
+```
+
+`.chargeCreditCard`, `.redirectPayPal` and `.transferCrypto` stand for functions typed `.$??` (§11.1). `myPayment` reaches the output as:
+
+```json
+{ "$type": "Crypto", "walletAddress": "…", "blockChain": "Bitcoin",
+  "process": { "$type": "Success", "code": "…" } }
+```
+
+What it shows:
+
+- **`^:` is the union's interface.** It is an anonymous interface that every arm is `on`. Types declared inside it, such as `Response`, are visible to the arms as `.Response`, and outside as `.PaymentMethod.Response`. A value an abstract member needs, such as a fee, is a required field declared here.
+- **Arms are declared inline or referenced.** A bare name with a body declares a new type (`CreditCard:`); a dotted name references an existing one (`.TxBookFolder`). A bare name with no colon declares an arm that adds nothing — `Loading`, not `Loading:` — and its instance is `{ "$type": "Loading" }`, the discriminator alone. Such an arm is not allowed when the union's interface has abstract members or required fields, since it would define none of them.
+- **Abstract members resolve on construction.** `.process` takes only the receiver, so each instance computes it once, when it is constructed, and holds the result as a field (§10.2). `.payments.map((p) => p.process)` reads values; it calls nothing, and no routing happens.
+- **Construction inside a body.** `.Success(result)` constructs an arm by tuple (§8.3). It is equivalent to `x in .Response as .Success: …` in the Key Area.
+- **Primitive arms carry no tag.** A `.$` or `.R` arm cannot hold a property; `typeof` tells it apart.
+- **Incoming data is discriminated by `$type`.** A record entering a union takes the arm its `$type` names and is validated against that arm. An unknown or missing `$type` is a build error.
+- **Consumers narrow on the field.** A TxComponent receives plain data and narrows with `p.$type === "Crypto"`, as a TypeScript author would with `method` — no Tx machinery is needed in the browser (§19.2).
+- **`$type` is part of the value,** so it is part of the interning key (§18.3).
+
+❓ Abstract members with parameters beyond `.%` (§22 #59). Whether `instanceof` is true for every arm of a nested or sub-union, such as `instanceof .Response` (§22 #60). Sub-unions with `as` and `del`, and how a sub-union type declaration is told apart from a field declaration (§22 #61). Generic unions such as `Result<T>` wait on generics (§22 #30); their error arm is the system `.Error`. Whether the `instanceof` hook is emitted with ES-module output (§22 #62).
 
 ---
 
@@ -774,11 +875,9 @@ What it shows:
 
 ### 12.1 Erasure ✅
 
-Types live only in the compiler's map. After compilation the output is plain JavaScript objects, primitives and arrays — no classes, no tags, no closures.
+Types live only in the compiler's map. After compilation the output is plain JavaScript objects, primitives and arrays — no classes, no closures, and no tags except on union arms.
 
-**No type tag.** A union is discriminated inside Tx, by arm name (`as`), and consumed through the arm's members (§11.5). What crosses the SSG boundary is a member's result, never the union value itself, so no `$type` is emitted. TypeScript components receive untyped data and impose their own static types, exactly as Tx does: untyped data out, untyped data in, static types on both sides.
-
-❓ If a union value itself were ever passed to a consumer outside the compiler, its arm would be lost. Either forbid that (a compile error), or keep a `$type` for that case only (§22 #46).
+**`$type` on union arms only.** Every instance of an object arm of a union carries `$type`, its arm name, in the output as well as at build (§11.6). It is what lets union data go out and come back in. Nothing else carries a tag. TypeScript components receive plain data and impose their own static types, exactly as Tx does, narrowing on `$type` where a union arrives.
 
 ### 12.2 Primitive flattening ✅ / ❓
 
@@ -854,7 +953,7 @@ A %runtime:
 
 A `%runtime` value carries its trait name in a `$type` string property. The compiler emits `isTrait(value, name)` and a `Symbol.hasInstance` hook, so `instanceof .A` works inside `>>` bodies. The tag must be a plain string property: values reach the Worker through structured clone, which drops Symbol-keyed properties. A primitive-value trait marked `%runtime` becomes an object holding the primitive and `$type` (§12.2).
 
-Open (§22 #32): whether `instanceof` is true for descendants and implementers, and whether the tag is stripped at erasure. Tx-level reflection over type records is deferred to TxCode; on-the-fly types are built with TypeScript functions for now.
+Open (§22 #32): whether `instanceof` is true for descendants and implementers. Union arms always carry `$type`, unstripped (§11.6, §12.1). Tx-level reflection over type records is deferred to TxCode; on-the-fly types are built with TypeScript functions for now.
 
 ---
 
@@ -870,9 +969,9 @@ Open (§22 #32): whether `instanceof` is true for descendants and implementers, 
 | `.Q` | multiplicative inverses → `div` | field |
 | `.R` | completeness → `sqrt`, `sin`, `exp` | complete ordered field |
 
-`.R:n` is `n` significant digits; `.R.n` is `n` decimal places, `n ∈ [1, 15]`. Beyond 15, a double carries no reliable information.
+`.R:n` is `n` significant digits; `.R.n` is `n` decimal places, `n ∈ [1, 14]`. Rounding to `n` digits is decided by digit `n + 1`. A double has 15 reliable digits, so the 15th is the last that can decide a rounding, and 14 is the most that can be kept (§13.8). Wider precision needs a 128-bit or arbitrary-precision number type 🔮.
 
-**Precision tags are formatting, not closure constraints.** `9.99 + 9.99 = 19.98` has four significant figures; `.R:3` is not closed under addition as a value property. It works because the tag rides along and governs output only.
+**A precision tag rounds on set; it is not a closure constraint.** When a `.R:n` or `.R.n` field is set — by a value or by a `>>` body — the number is mapped through `precisionRound` or `fixedRound` (§13.8), and the rounded value is what is stored. Arithmetic is not closed under the tag: `9.99 + 9.99 = 19.98` has four significant figures, and becomes `20.0` only when it is set into a `.R:3` field. Floating-point error in the arithmetic before that point is out of scope, because it lives in the 16th digit and beyond.
 
 ### 13.2 Explicit versus interface ✅
 
@@ -958,11 +1057,25 @@ Current position: **overflow surfaces only at `to.$`**, via an `isSafeInteger` c
 
 - **Relative epsilon by decade.** `2 × Number.EPSILON × 10^scale`, where scale is `floor(log10(|n|)) + 1`. `Number.EPSILON` alone is a base-2 quantity, correct only for mantissas in `[0.1, 1)`.
 - **`safeAdd` / `safeSum`.** Collapse a cancelled result to exactly `0`, judged against the **largest magnitude** in the computation — not the result's own magnitude, which is tiny by construction. `safeSum` uses Neumaier compensated summation and applies one zero test at the end.
-- **`fixedRound` / `precisionRound`.** Round the decimal the author wrote, not its binary approximation: shift the decimal point, nudge by one relative epsilon, round, shift back. Half always goes away from zero, symmetrically. `(1.005).toFixed(2)` is `"1.00"` because the stored double is below 1.005; `fixedRound(1.005, 2)` is `1.01`.
+- **`fixedRound` / `precisionRound`.** Round the decimal the author wrote, not its binary approximation: nudge the magnitude up by `2 × Number.EPSILON` relative to itself, shift the decimal point, round, shift back. Half always goes away from zero, symmetrically. `(1.005).toFixed(2)` is `"1.00"` because the stored double is below 1.005; `fixedRound(1.005, 2)` is `1.01`.
+- **Arithmetic only.** Rounding never takes a string round trip. `safeDecadeMultiply` and `safeDecadeDivide` move the decimal point, in two steps past `10^200` so no intermediate overflows, and a negative shift divides by the exact positive power rather than multiplying by an inexact negative one. `precisionRound` counts digits as `floor(log10|n| + 1)`, which stays correct where the `log10` of a 14- or 15-digit number rounds to an integer. Tested across `10^-308 … 10^308` (`MIN_SAFE_SCALE`, `MAX_SAFE_SCALE`).
+- **The real number.** Base 2 and base 10 do not align, so a double is not the decimal it prints. The double for `1.005` is exactly `1.00499999999999989…`; the real number it stands for is `1.005`. Every real number of up to 15 significant digits lies within the nudge (`2 × Number.EPSILON`, relative) of its double, and `fixedRound` / `precisionRound` round that real number, not the binary digits.
+- **The guarantee.** Rounding a real number of up to 15 significant digits to `n ≤ 14` digits gives exactly the decimal result, across the normal range of doubles (about `2.2 × 10^-308` to `1.8 × 10^308`). A decimal of up to 15 digits is either exactly on a half, which the nudge carries up, or a whole unit of the 15th digit away from it, tens of ULP outside the nudge. So the nudge never moves a value that is not a half. The tests check this against exact decimal arithmetic over seeded decimals, half of them built as exact halves.
+- **Why 14.** Rounding to `n` digits is decided by digit `n + 1`, so the 15th digit is the last that can decide. Rounding to 15 would need the 16th, which a double does not hold (`MAX_PRECISION_DIGITS`, §13.1).
+- **Scope.** The guarantee holds for values that carry 15 reliable digits: literals, and results of arithmetic whose error stays within the nudge. A subtraction that cancels leading digits leaves fewer: `(8.575 + 1e5) - 1e5` is `8.57499999999709`, already different from `8.575` in the 12th digit, so it rounds to `8.57`. Once that double exists, the digits are gone; `safeSum` avoids creating it (*Cancellation and `safeSum`*, below).
+- **Cancellation and `safeSum`** ✅ / 🔮. Adding values of opposite sign cancels leading digits and exposes error that sat beyond the 15th digit of the larger values. With plain `+`, `1e5 + 8.575 - 1e5` is `8.57499999999709` and `1e15 + 8.575 - 1e15` is `8.625`. Multiplication and division cannot cancel. Three kinds of error can be exposed:
+  - **The additions' own error — solved.** Neumaier compensation captures the bits each addition loses and adds them back, in any order and without sorting: `safeSum(1e5, 8.575, -1e5)` and `safeSum(1e15, 8.575, -1e15)` are both `8.575`. A cancelled total is still collapsed to exactly `0`.
+  - **The operands' binary form — not solved by compensation.** Compensation works on the doubles it is given. When the large terms are not exact in binary, their representation error survives the cancellation: `safeSum(123456.789, -123456.788)` is `0.0010000000038417…`. The result is reliable to about the 15th digit of the largest term, not of the result — `0.001` at `.R:3`, noise at `.R:14`.
+  - **Digits below the large terms' 15th digit — don't-cares.** A small term finer than the 15th digit of the large terms is lost unless the large terms cancel exactly. Under the 15-digit rule those digits carry no reliable information, and mixing large and small numbers beyond the 15-digit range is expected to degrade precision.
+
+  **Guidance.** Sum with `.safeSum` (§16.7), not raw `+` and `-`, wherever terms of opposite sign may cancel; arithmetic written in a `>>` body is not protected. When the large terms are not exact in binary, trust the result only to about the 15th digit of the largest term, and choose the field's precision accordingly.
+
+  🔮 **Exact sums.** Two stronger remedies were tested and are kept for a future version, should a use case need them. Rounding the compensated sum once to the finest decimal place among the operands — capped at the 15th digit of the largest operand not exact in binary — removes the representation error. Summing the operands' real numbers exactly with `BigInt` keeps every digit. Both need each operand's decimal place from its Tx type. Sorting by magnitude adds nothing once compensation is used, and rounding partial sums to significant digits does not help.
+- **Rounded values are compared with `areEqual`, never `===`.** Beyond `10^22` the powers of ten used for the shift are inexact, so two roundings to the same decimal can differ in the last bit (`1.0099999999999999e-207` against `1.01e-207`). Rounding on set (§13.1) followed by `areEqual` gives equality to 15 significant digits.
 
 `.R.n` maps to `fixedRound`; `.R:n` maps to `precisionRound`.
 
-`safeAdd` and `safeSum` are **called deliberately by the author**, not injected by the compiler. Type checking stays static; numerical hygiene stays explicit; the compiler keeps one job.
+`safeAdd` and `safeSum` are **called deliberately by the author**, not injected by the compiler. Type checking stays static; numerical hygiene stays explicit; the compiler keeps one job. Inside a `>>` body, `.safeSum` and `.areEqual` are called as Tx islands (§16.7).
 
 ---
 
@@ -1150,6 +1263,38 @@ JavaScript (and perhaps TypeScript) functions can be imported so that any `>>` b
 
 Imported functions run in the same Worker as the bodies that call them (§16.5), so they obey the same rules: pure, deterministic, no I/O. The `math.ts` helpers (`safeAdd`, `safeSum`, `fixedRound`, `precisionRound`, §13.8) are the first candidates. The editor offers imported functions, with their signatures, for completion and hover (§20).
 
+### 16.7 Tx islands ✅ / ❓
+
+A `>>` body is JavaScript, and Tx types are gone inside it (§16.4). Tx controls a body only at its boundary: the declared parameter types going in, and the declared return type coming out, checked against the value the body actually returns when it runs at build. The compiler does not analyse what happens in between.
+
+Where a body needs TxData semantics in the middle — equality that respects precision, a sum whose cancellation is exactly zero — the author calls a **Tx island**: a dotted call the compiler resolves using the Tx types of its arguments.
+
+**Dotted is Tx; bare is JavaScript.** Inside a body, a dotted name is a member (§16.3), a Tx island, or an imported function (§16.6); a bare name is plain JavaScript. An island reads its arguments' Tx types from their dotted references, so the JavaScript around it carries no Tx notation.
+
+| Island | Does | Built on |
+|---|---|---|
+| `.areEqual(a, b)` | type-aware equality | `areEqual` (§13.8); interning (§18.2) |
+| `.safeSum([…])` | compensated sum; a cancelled total is exactly `0` | `safeSumAll` (§13.8) |
+
+```
+x in .R:2: 3.314                          // rounds to 3.3
+y in .R:3: 3.295                          // rounds to 3.30
+b in .B: >> .areEqual(.x, .y);            // true
+
+p in .R:1: 0.1
+q in .R:1: 0.2
+t in .R:1: >> .safeSum([.p, .q, -0.3]);   // exactly 0, not 5.55e-17
+```
+
+**`.areEqual` rules.**
+
+- **Comparable types only.** Comparing different types is a compile error: `.URL` against `.$`, or `.R.n` against `.R:n`, which are different number domains — decimal places against significant digits.
+- **`.R:a` against `.R:b` compares at the higher precision.** Both values were rounded when set (§13.1), so this compares the stored values within the relative epsilon: `.x` read at three digits is `3.30`, which equals `.y`.
+- **Traits are equal when structurally identical** (§12.5): names, types, kinds and values. Interning makes that a reference comparison (§18.2), so two separately declared traits with the same structure — duck typing — are equal.
+- **Projection does not count** (§12.5). If extra members were ignored, `{a, b}` would equal both `{a, b, c: 1}` and `{a, b, c: 2}`, which are unequal to each other, and equality would stop being transitive.
+
+❓ An argument that is a JavaScript local — `el` in `.map((el) => …)` — has no Tx type to read; how an island treats it is open (§22 #55). Whether interning covers every type or only types that opt in is open (§22 #56). `math.ts` also exports `areEqual` and `safeSum` under the same names; precedence between islands and imported functions is open (§22 #57). Construction by tuple inside a body (`.Success(result)`) and `instanceof .Trait` are further island candidates, pending the union work (§12.1, §22 #46).
+
 ---
 
 ## 17. Compilation and Erasure
@@ -1334,7 +1479,7 @@ Contrast languages whose names are bare words, where every keystroke must be tre
 | `.` at the start of a line in a construction body | members of the trait not yet defined (§7.2) |
 | `.` after a name | that value's or trait's members |
 | `%` in a `tx-d` key head | key attributes: `%;`, `%,`, `%sp`, `%<` |
-| `.` in a `>>` body | members, then imported JavaScript functions (§16.6) |
+| `.` in a `>>` body | members, Tx islands (§16.7) and imported JavaScript functions (§16.6) |
 
 Tag names come from the `TxConfig.ts` tag tables. How the editor reads them without executing component code is open (§22 #40).
 
@@ -1435,7 +1580,7 @@ Status legend: ✅ resolved · 🟡 partially resolved · 🟠 unresolved.
 | 9 | Parameter shadowing a member name | forbid or accept explicitly | 🟠 |
 | 10 | Array flattening with other required fields present | rank does not settle the tuple case (§8.5); array last, or named form required | 🟠 |
 | 11 | Spread vs pass for nested arrays | settled by rank: an item of the element type is a member, an item of the array type is flattened (§8.5) | ✅ |
-| 12 | Union narrowing syntax (`is`?) and exhaustiveness | unions are unsafe without it | 🟠 |
+| 12 | Union narrowing syntax (`is`?) and exhaustiveness | `as` in the Key Area, `instanceof .Arm` in bodies; exhaustiveness from `^` members, which every arm must implement (§11.4, §11.6) | ✅ |
 | 13 | Optional narrowing: does `.none` coerce in arithmetic, or error? | erroring is consistent | 🟡 |
 | 14 | `has()` all-of or any-of on OR sets | undecided | 🟠 |
 | 15 | Projection implicit or marked | implicit can swallow a wrong argument | 🟠 |
@@ -1455,7 +1600,7 @@ Status legend: ✅ resolved · 🟡 partially resolved · 🟠 unresolved.
 | 29 | `0^0` — JS gives 1; Tx guard must be emitted if it disagrees | undecided | 🟠 |
 | 30 | Generics beyond `.Type<I>` | 🔮 | 🟠 |
 | 31 | Function overloads | 🔮 — needs argument inference and tie-breaking | 🟠 |
-| 32 | Runtime `instanceof` — `%runtime` (§12.7) | `$type` string tag, `isTrait`, `Symbol.hasInstance`; open: subtype semantics, stripping at erasure; Tx-level reflection deferred to TxCode | 🟡 |
+| 32 | Runtime `instanceof` — `%runtime` (§12.7) | `$type` string tag, `isTrait`, `Symbol.hasInstance`; union arms always tagged, never stripped (§11.6); open: subtype semantics (#60); Tx-level reflection deferred to TxCode | 🟡 |
 | 33 | Mutability | 🔮 TxCode | 🟠 |
 | 34 | ESM module traits | 🔮 | 🟠 |
 | 35 | Default types as trait types, not just primitives | 🔮 | 🟠 |
@@ -1469,14 +1614,26 @@ Status legend: ✅ resolved · 🟡 partially resolved · 🟠 unresolved.
 | 43 | Completion triggers | only `.` and `%` at the start of a token (§20.4) | ✅ |
 | 44 | Global scope for completion and resolution | global head(s) plus every props trait; a name defined twice across global files is an error; depends on #38 | 🟡 |
 | 45 | Global head defines a field that a fence then redefines (`tx-folder`, §11.5) | heads are base layers; each file may override a top-level field once (§3.2) | ✅ |
-| 46 | A union value itself passed outside the compiler | union arms are consumed through members, so no tag is emitted (§12.1); for a raw union value: compile error, or `$type` for that case only | 🟠 |
-| 47 | Type-name discriminator | the arm name selected with `as`; arms always differ in some value; no tag field (§11.5) | ✅ |
+| 46 | A union value itself passed outside the compiler | every instance of an object arm carries `$type`, in and out (§11.6, §12.1) | ✅ |
+| 47 | Type-name discriminator | the arm name, selected with `as` and emitted as `$type`; no discriminant field is declared (§11.6) | ✅ |
 | 48 | Placement of `#` (const) | left-most on the key (`#to.$$`) or next to the type; never written on a reference (§6.1) | 🟡 |
 | 49 | What replaces `to.%` as a primitive trait's value slot | needed for §12.2 flattening, `.Z`/`.N` definitions (§12.6, §15.1), `sum` (§13.2) and codegen (§16); `.%` in §12.6 also clashes with the enum-member type | 🟠 |
 | 50 | `trait-add-mode: Flattened` | how to ask for a namespaced `add` at one site; collisions become more likely (§3.5) | 🟠 |
 | 51 | Module settings (§3.5) | a head field with a default, overridden once per file; `trait-add-mode` is the first | ✅ |
 | 52 | String, enum and key/value XOR sets (§11.2) | `.$^{}` members are bare strings; `.%^{}` members are dot-referenced; `.%:.T^{}` members have `.key` and `.value` | ✅ |
 | 53 | TxKeyRef rendering in text | implicit `.to.$`; `.to.$$` only when written explicitly (`%.tx-folder.to.$$`) (§14.1) | 🟡 |
+| 54 | Precision cap for `.R:n` / `.R.n` | 14 digits, with the 15th deciding; exact for every real number of up to 15 significant digits (§13.1, §13.8) | ✅ |
+| 55 | Tx-island arguments that are JavaScript locals | no Tx type to read from a bare local (§16.7) | 🟠 |
+| 56 | Interning for every type, or opt-in (`%Hash`) | equality is structural either way; interning changes only its cost (§16.7, §18) | 🟠 |
+| 57 | Island names versus imported functions | `math.ts` exports `areEqual` and `safeSum` under the island names; precedence not fixed (§16.6, §16.7) | 🟠 |
+| 58 | Cancellation in sums | `safeSum` (Neumaier) recovers the additions' own error; the operands' binary error and digits below the largest term's 15th digit remain, documented as expected degradation; exact sums (grid rounding, `BigInt`) kept for a future version (§13.8) | ✅ |
+| 59 | Abstract members with parameters beyond `.%` | values they need are required fields for now; parameterised members with routers are 🔮 TxCode (§10.2, §11.6) | 🟠 |
+| 60 | `instanceof` for nested and sub-unions | e.g. `instanceof .Response` true for any of its arms (§11.6) | 🟠 |
+| 61 | Sub-unions with `as` and `del` | `.PaymentMethod as .CreditCard .PayPal`, `.PaymentMethod del .Crypto`; telling a sub-union type declaration from a field declaration (§11.6) | 🟠 |
+| 62 | `instanceof` hook in ES-module output | (§11.6) | 🟠 |
+| 63 | Routers for abstract members | 🔮 TxCode — needs typed code blocks and overloads (#31) (§11.6) | 🟠 |
+| 64 | `.T?!` throwable result | 🔮 TxCode (§11.1) | 🟠 |
+| 65 | Interfaces without abstract members | a user-defined interface has at least one `^` member; the system numeric interfaces `.IN`–`.IR` are the exception (§10.1) | ✅ |
 
 ---
 
@@ -1546,11 +1703,11 @@ Reasoning worth not relosing.
 | `.Q` | rationals — two `.Z`, cannot flatten |
 | `.R` | reals; `.R:n` significant, `.R.n` fixed |
 | `.Hex` | 32-bit integer written with a `0x` prefix |
-| `.%` | enum member — the member type of `.%^{}` and `.%:.T^{}` sets (§11.2) |
-| `.IN .IW .IZ .IQ .IR` | numeric interfaces — type-preserving bounds |
+| `.%` | enum member — the member type of `.%^{}` and `.%:.T^{}` sets (§11.2); as a parameter name, the receiver (`this`) of an abstract member (§10.2) |
+| `.IN .IW .IZ .IQ .IR` | numeric interfaces — type-preserving bounds; system-defined, with no abstract members (§10.1) |
 | `.NaN` | folded into `.R` |
 | `.none` | the single null |
-| `.Error` | validator return |
+| `.Error` | typed error with `message` as an ordinary field; validator return; the error arm of `.T??` (§11.1) |
 | `.Type` / `.Type<I>` | the type of types; `<I>` is a system form |
 | `.Date` ❓ | ISO 8601, flattened `.$` with a validator |
 | `.URL` ❓ | flattened `.$` with a validator |

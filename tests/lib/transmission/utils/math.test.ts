@@ -6,6 +6,9 @@ import {
 	decadeScale,
 	fixedRound,
 	isZeroAtScale,
+	MAX_PRECISION_DIGITS,
+	MAX_SAFE_SCALE,
+	MIN_SAFE_SCALE,
 	precisionRound,
 	relativeEpsilon,
 	relativeEpsilonFromScale,
@@ -27,6 +30,47 @@ const JUST_BELOW_ONE = 0.9999999999999999;
 const JUST_ABOVE_ONE = 1.0000000000000002;
 /** The classic inexact sum: 0.30000000000000004, not 0.3. */
 const INEXACT_POINT_THREE = 0.1 + 0.2;
+
+/** Seeded PRNG (mulberry32), so randomised tests see the same inputs every run. */
+function mulberry32(seed: number): () => number {
+	let a = seed >>> 0;
+	return () => {
+		a = (a + 0x6d2b79f5) >>> 0;
+		let t = a;
+		t = Math.imul(t ^ (t >>> 15), t | 1);
+		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+	};
+}
+
+/**
+ * Exact decimal rounding, done on the digit string with BigInt, so the
+ * reference makes no floating-point error of its own.
+ *
+ * @param digits The significant digits of the real number, no leading zeros.
+ * @param exponent The value is `digits[0].digits[1…] × 10^exponent`.
+ * @param sigDigits Significant digits to keep.
+ * @param sign `1` or `-1`.
+ */
+function decimalRound(
+	digits: string,
+	exponent: number,
+	sigDigits: number,
+	sign: number,
+): number {
+	let kept = digits;
+	let e = exponent;
+	if (digits.length > sigDigits) {
+		let k = BigInt(digits.slice(0, sigDigits));
+		if (Number(digits[sigDigits]) >= 5) k += 1n;
+		kept = k.toString();
+		if (kept.length > sigDigits) {
+			e += 1;
+			kept = kept.slice(0, sigDigits);
+		}
+	}
+	return sign * Number(`${kept[0]}.${kept.slice(1) || "0"}e${e}`);
+}
 
 describe("transmission/utils/math", () => {
 	// =======================================================================
@@ -344,6 +388,26 @@ describe("transmission/utils/math", () => {
 			expect(safeSumAll(terms)).toBe(0);
 		});
 
+		test("recovers a small term between cancelling large terms", () => {
+			// Plain + loses 8.575's low digits to the large term's scale and
+			// the cancellation exposes them. Compensation adds the lost bits
+			// back, whatever the order.
+			expect(1e5 + 8.575 - 1e5).toBe(8.57499999999709);
+			expect(safeSum(1e5, 8.575, -1e5)).toBe(8.575);
+			expect(safeSum(8.575, 1e5, -1e5)).toBe(8.575);
+			expect(1e15 + 8.575 - 1e15).toBe(8.625);
+			expect(safeSum(1e15, 8.575, -1e15)).toBe(8.575);
+		});
+
+		test("cannot remove the operands' own binary error", () => {
+			// 123456.789 is not exact in binary. Its representation error
+			// survives the cancellation: the result is reliable to about the
+			// 15th digit of the largest term, not of the result.
+			const total = safeSum(123456.789, -123456.788);
+			expect(total).not.toBe(0.001);
+			expect(precisionRound(total, 3)).toBe(0.001);
+		});
+
 		test("leaves a real total untouched", () => {
 			expect(safeSum(1, 2, 3)).toBe(6);
 			expect(safeSum(0.1, 0.2)).toBe(INEXACT_POINT_THREE);
@@ -391,9 +455,8 @@ describe("transmission/utils/math", () => {
 		});
 
 		test("returns a clean double rather than a rounding artefact", () => {
-			// Math.round(x * 100) / 100 can land on a neighbouring double with
-			// a long tail; the string round trip lands on the double nearest
-			// the intended decimal.
+			// Dividing the rounded integer by an exact power of ten lands on
+			// the double nearest the intended decimal.
 			expect(fixedRound(INEXACT_POINT_THREE, 2)).toBe(0.3);
 			expect(fixedRound(1.005, 2).toString()).not.toContain("e");
 		});
@@ -504,12 +567,101 @@ describe("transmission/utils/math", () => {
 			expect(precisionRound(0, 5)).toBe(0);
 		});
 
-		test("clamps significant digits to 1..15", () => {
-			// Beyond 15 digits a double carries no reliable information.
-			expect(precisionRound(1.23456789012345678, 30)).toBe(
-				Number((1.23456789012345678).toPrecision(15)),
-			);
+		test("clamps significant digits to 1..14", () => {
+			// Rounding to n digits is decided by digit n + 1, and the 15th
+			// digit is the last reliable one, so 14 is the most a double can
+			// keep.
+			expect(MAX_PRECISION_DIGITS).toBe(14);
+			expect(
+				areEqual(
+					precisionRound(1.23456789012345678, 30),
+					Number((1.23456789012345678).toPrecision(14)),
+				),
+			).toBe(true);
+			expect(
+				areEqual(
+					precisionRound(1.23456789012345678, 15),
+					precisionRound(1.23456789012345678, 14),
+				),
+			).toBe(true);
 			expect(precisionRound(123456, 0)).toBe(100000);
+		});
+
+		test("rounds correctly at every decade scale", () => {
+			// Each case is scaled by 10^p across the whole safe range, and the
+			// rounded result compared with the scaled expectation. Shifts past
+			// 10^22 use inexact powers of ten, so the last bit can vary; the
+			// comparison is areEqual, not toBe.
+			const cases: [number, number, number][] = [
+				[1.005, 1.01, 3],
+				[-1.005, -1.01, 3],
+				[INEXACT_POINT_THREE, 0.3, 1],
+				[1.00000000000005, 1.0000000000001, 14],
+				[-1.00000000000005, -1.0000000000001, 14],
+			];
+			for (const [n, expected, sigDigits] of cases) {
+				for (let p = MIN_SAFE_SCALE; p <= MAX_SAFE_SCALE; p++) {
+					const factor = 10 ** p;
+					const rounded = precisionRound(n * factor, sigDigits);
+					expect(
+						areEqual(rounded, expected * factor),
+						`${n} x 1e${p} to ${sigDigits} digits gave ${rounded}`,
+					).toBe(true);
+				}
+			}
+		});
+
+		test("rounds every digit count from 2 to 14 at the extremes", () => {
+			// 1.05, 1.005, 1.0005, … each rounded on its last digit.
+			for (const p of [MIN_SAFE_SCALE, 0, MAX_SAFE_SCALE]) {
+				for (let i = 0; i <= 12; i++) {
+					const n = Number(`1.0${"0".repeat(i)}5`);
+					const expected = Number(`1.${"0".repeat(i)}1`);
+					const rounded = precisionRound(n * 10 ** p, 2 + i);
+					expect(
+						areEqual(rounded, expected * 10 ** p),
+						`${n} x 1e${p} to ${2 + i} digits gave ${rounded}`,
+					).toBe(true);
+				}
+			}
+		});
+
+		test("rounds every decimal of up to 15 significant digits exactly", () => {
+			// The real number a double stands for is the decimal within the
+			// nudge of it: the double for 1.005 is 1.00499999999999989…, and
+			// the real number is 1.005. A decimal of up to 15 digits is either
+			// exactly on a half, which the nudge carries up, or a whole unit
+			// of the 15th digit away, far outside the nudge. So every such
+			// decimal rounds exactly as decimal arithmetic says, at every
+			// scale. Half the cases are built as exact halves.
+			const rand = mulberry32(7);
+			for (let i = 0; i < 100_000; i++) {
+				const sigDigits = 1 + Math.floor(rand() * MAX_PRECISION_DIGITS);
+				let digits = String(1 + Math.floor(rand() * 9));
+				const length = 1 + Math.floor(rand() * 15);
+				for (let j = 1; j < length; j++) {
+					digits += Math.floor(rand() * 10);
+				}
+				if (rand() < 0.5) {
+					digits = `${digits.slice(0, sigDigits).padEnd(sigDigits, "0")}5`;
+				}
+				const exponent =
+					Math.floor(rand() * (MAX_SAFE_SCALE - MIN_SAFE_SCALE + 1)) +
+					MIN_SAFE_SCALE;
+				const sign = rand() < 0.5 ? -1 : 1;
+				const n =
+					sign * Number(`${digits[0]}.${digits.slice(1) || "0"}e${exponent}`);
+				// Normal doubles only: below 2.2e-308 a double loses digits.
+				if (!Number.isFinite(n) || Math.abs(n) < 2.2250738585072014e-308) {
+					continue;
+				}
+				const rounded = precisionRound(n, sigDigits);
+				const expected = decimalRound(digits, exponent, sigDigits, sign);
+				expect(
+					areEqual(rounded, expected),
+					`${digits}e${exponent} to ${sigDigits} digits gave ${rounded}`,
+				).toBe(true);
+			}
 		});
 
 		test("passes non-finite values through", () => {

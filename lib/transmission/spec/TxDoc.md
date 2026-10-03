@@ -2,9 +2,11 @@
 
 **Transmission (Tx) — the Tx-markdown extension for `unified.js` pipelines**
 
-*Revised 28 September 2026.* This document describes the target design of TxDoc and, where the implementation in `lib/transmission/` differs, says so. It is one of the specs that make up the Spec (§1). §16 bridges to TxData and TxGen.
+*Revised 3 October 2026.* This document describes the target design of TxDoc and, where the implementation in `lib/transmission/` differs, says so. It is one of the specs that make up the Spec (§1). §16 bridges to TxData and TxGen.
 
 **Revision 28 September 2026.** TxAttributes on every TxElement, after its content, never in a Body Area (§6, §12). No spread operator; TxComponent props supplied either by named first-level TxAttributes or whole by `%props:` (§15.4). The fence name `tx-d` is settled. The VS Code extension — colouring, autocomplete, hover — is the editor target; the Obsidian plugin moves to a future version (§16.5, §16.6). TxComponent security is deferred (§15.8). Open-items registers gain a status column (§18).
+
+**Revision 3 October 2026.** `^ITxFolder` declares `^to.$$` as an abstract member, defined by every folder type (TxData §10.2).
 
 **Status markers**
 
@@ -952,7 +954,7 @@ The folder type maps to a wrapper component **in `TxConfig.ts`**, not in the man
 ```
 ^ITxFolder %<:
 	content in .$$?
-	to.$$
+	^to.$$
 
 TxEntry:
 	filename in .$      // raw, with prefix
